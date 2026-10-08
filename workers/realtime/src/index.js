@@ -77,7 +77,7 @@ export class Matchmaker extends DurableObject {
     const [client,server]=Object.values(pair);
     this.ctx.acceptWebSocket(server,[guestId]);
     this.save(server,{guestId,mode:null,state:"idle",peerId:null,callId:null,
-      joinedAt:0,windowStart:Date.now(),messages:0});
+      joinedAt:0,lastPeerId:null,lastPeerAt:0,windowStart:Date.now(),messages:0});
     this.send(server,{type:"ready"});
     return new Response(null,{status:101,webSocket:client,
       headers:{"Sec-WebSocket-Protocol":"crosswave.v1"}});
@@ -130,7 +130,9 @@ export class Matchmaker extends DurableObject {
     if(s.callId) {this.send(ws,{type:"error",message:"Leave current call first"});return;}
     s.mode=mode;s.state="waiting";s.joinedAt=Date.now();this.save(ws,s);
     const candidates=[...this.sessions.entries()].filter(([w,p])=>w!==ws &&
-      p.mode===mode && p.state==="waiting" && w.readyState===WebSocket.OPEN)
+      p.mode===mode && p.state==="waiting" && w.readyState===WebSocket.OPEN &&
+      !(s.lastPeerId===p.guestId && Date.now()-s.lastPeerAt<120000) &&
+      !(p.lastPeerId===s.guestId && Date.now()-p.lastPeerAt<120000))
       .sort((a,b)=>a[1].joinedAt-b[1].joinedAt);
     for(const [w,p] of candidates.slice(0,16)) {
       if(ws.readyState!==WebSocket.OPEN || w.readyState!==WebSocket.OPEN) break;
@@ -168,10 +170,12 @@ export class Matchmaker extends DurableObject {
     const s=this.sessions.get(ws);
     if(!s) return;
     const callId=s.callId,peerId=s.peerId;
+    if (callId && peerId) {s.lastPeerId=peerId;s.lastPeerAt=Date.now();}
     s.callId=null;s.peerId=null;s.state="idle";this.save(ws,s);
     if(callId) {
       const peer=this.findGuest(peerId);
       if(peer && peer[1].callId===callId) {
+        peer[1].lastPeerId=s.guestId;peer[1].lastPeerAt=Date.now();
         peer[1].callId=null;peer[1].peerId=null;peer[1].state="waiting";
         peer[1].joinedAt=Date.now();
         this.save(peer[0],peer[1]);this.send(peer[0],{type:"peer-left"});
