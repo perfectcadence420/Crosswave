@@ -1,6 +1,24 @@
-# Crosswave — first live two-person video chat
+# Straylo — random video and text chat
 
-This repository includes the Crosswave static landing page, its browser WebRTC client, and Vercel serverless APIs backed by Neon Postgres.
+Straylo is the public-facing brand for this repository. The original Crosswave infrastructure identifiers, Neon schema, guest cookie, Vercel project, and Cloudflare Worker name are intentionally retained for compatibility while the domain transition is pending.
+
+## New mobile-first experience
+- Landing screen has two choices: **Video chat** and **Text chat**.
+- Choosing a mode opens a full-height app route: `/chat/video` or `/chat/text`.
+- Desktop video places the stranger's video prominently next to your own, with persistent messages on the side.
+- Mobile video uses a large stranger view and picture-in-picture for your camera. The Messages icon opens the integrated text chat as a drawer.
+- **Both video and text chat support sending and receiving text messages**. The mode only decides whether WebRTC camera/audio is included.
+- **Back** disconnects the session and returns to the landing page, as does browser back.
+- The 18+ and rules checkboxes remain mandatory to connect. Report, block, Next, Stop, quality profiles and Cloudflare TURN are retained.
+- The regular site still uses HTTP matchmaking; the test link with `?realtime=1` opts into the Cloudflare Durable Object WebSocket canary.
+- Client-side routes need the Vercel rewrite in `vercel.json`.
+
+**Domain:** `straylo.com` was available at the last registry lookup, but is **not purchased or connected**. Do not switch Cloudflare Worker allowed origins or `API_BASE_URL` until the purchased domain is verified and Vercel is configured to serve it.
+
+---
+
+
+This repository contains Straylo's immersive browser client, WebRTC media transport, and Vercel serverless APIs backed by the existing Neon database.
 
 ## Architecture
 - Browser: camera/microphone via getUserMedia; peer-to-peer video/audio via WebRTC, plus text mode.
@@ -10,11 +28,11 @@ This repository includes the Crosswave static landing page, its browser WebRTC c
 - Video and audio streams go peer-to-peer when reachable or through a TURN relay when one is configured. They are **not** stored in Neon.
 
 ## How to test with two people
-1. Use the same **production domain** or same preview deployment URL on both devices. Different hosts do not share guest cookies or signaling contexts.
+1. Use the same **production domain** or preview deployment hostname on both devices, and choose the same mode from the home screen.
 2. Each tester accepts the 18+ and rules checkboxes.
-3. Select Video chat, allow camera and microphone and click **Start**.
+3. Choose Video or Text to open fullscreen chat. Confirm consent and click **Start**; for video, grant camera/microphone permissions.
 4. First user sees "Looking for a stranger…"; once the second joins, both show "Match found".
-5. When ICE connects, each sees the other's camera and hears audio. Use headphones to avoid feedback.
+5. During video, each sees the other's camera, hears audio, and can send text messages via the side chat (or mobile Messages drawer). Use headphones to avoid feedback.
 6. Test **Next** (disconnect and rematch), **Stop** (leave queue), and **Report** (block and file report).
 
 To test in two windows on the same device, use **normal and incognito** windows: two ordinary tabs share the same guest cookie and are treated as one user. Webcam sharing can be limited by browsers; use separate devices for a real AV test.
