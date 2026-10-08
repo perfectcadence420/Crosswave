@@ -32,7 +32,8 @@
     turnAvailable: false, connectionTimer: null, statsTimer: null, statsBusy: false,
     realtime: false, socket: null, pendingSignals: [], unread: 0, previousVideoStats: null,
     nickname: "", peerNickname: "", remoteTypingTimer: null, typingTimer: null,
-    lastTypingSent: 0, typingSent: false
+    lastTypingSent: 0, typingSent: false,
+    chatBaseHeight: 0, chatViewportWidth: 0
   };
   // A single high-quality camera target for all users. These are ideal
   // constraints and an outbound bitrate ceiling, not guaranteed stream specs.
@@ -181,7 +182,17 @@
     ui.entryPage.classList.toggle("hidden", visible);
     ui.chatPage.classList.toggle("hidden", !visible);
     document.body.classList.toggle("in-session", visible);
-    if (!visible) closeChatDrawer();
+    // The entire session is a fixed viewport: prevent Safari from scrolling
+    // the document behind the composer when its software keyboard opens.
+    document.documentElement.classList.toggle("in-session", visible);
+    if (visible) {
+      s.chatBaseHeight = window.visualViewport?.height || window.innerHeight || 0;
+      s.chatViewportWidth = window.visualViewport?.width || window.innerWidth || 0;
+    } else {
+      closeChatDrawer();
+      ui.chatPage.classList.remove("keyboard-open");
+    }
+    resizeChatViewport();
   }
   function switchMode(next) {
     if (s.running || s.busy || !["video","text"].includes(next)) return;
@@ -846,12 +857,39 @@
   // Use the visual viewport when the mobile keyboard opens, so the message
   // composer stays above it without zooming or requiring manual pinch-out.
   function resizeChatViewport() {
-    const height=window.visualViewport?.height;
+    const viewport=window.visualViewport;
+    const height=viewport?.height;
+    const width=viewport?.width || window.innerWidth || 0;
+    const mobile=window.matchMedia?.("(max-width: 760px)")?.matches;
+    const inChat=!ui.chatPage.classList.contains("hidden");
+    const usable=Number.isFinite(height) && height>200;
     document.documentElement.style.setProperty("--chat-vh",
-      Number.isFinite(height) && height>200 ? Math.round(height)+"px" : "100dvh");
+      usable ? Math.round(height)+"px" : "100dvh");
+    // iOS Safari sometimes moves its visual viewport down when focusing a
+    // text field; anchor the fixed chat shell to that viewport instead.
+    const offset=usable && inChat && mobile && Number.isFinite(viewport.offsetTop)
+      ? Math.max(0, Math.round(viewport.offsetTop)) : 0;
+    document.documentElement.style.setProperty("--chat-top",offset+"px");
+    if(!inChat || !mobile) {
+      ui.chatPage.classList.remove("keyboard-open");
+      return;
+    }
+    if(Math.abs(width-s.chatViewportWidth)>50) {
+      // Rotation changes the available height; don't mistake it for a keyboard.
+      s.chatBaseHeight=usable?height:window.innerHeight;
+      s.chatViewportWidth=width;
+    }
+    const inputFocused=document.activeElement===ui.message;
+    if(!inputFocused && usable) s.chatBaseHeight=Math.max(s.chatBaseHeight,height);
+    const keyboardOpen=Boolean(inputFocused && s.mode==="text" && usable &&
+      s.chatBaseHeight-height>140);
+    ui.chatPage.classList.toggle("keyboard-open",keyboardOpen);
   }
   window.visualViewport?.addEventListener("resize",resizeChatViewport);
+  window.visualViewport?.addEventListener("scroll",resizeChatViewport);
   window.addEventListener("resize",resizeChatViewport);
+  ui.message.addEventListener("focus",resizeChatViewport);
+  ui.message.addEventListener("blur",resizeChatViewport);
   resizeChatViewport();
   ui.messageForm.addEventListener("submit", event => void sendText(event));
   ui.sound.addEventListener("click", () => ui.remote.play().then(() => ui.sound.classList.add("hidden")).catch(() => announce("Enable sound in your browser to hear your match.")));

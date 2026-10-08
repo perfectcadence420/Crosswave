@@ -1,5 +1,9 @@
 # Straylo — random video and text chat
 
+## iPhone Safari keyboard layout fix (October 2026)
+
+Lock the active chat view to the visual viewport rather than placing it in a body with a taller fixed minimum height. When iOS opens the keyboard, the visual viewport's height **and vertical offset** can change. Straylo updates the fixed chat shell from both its resize and scroll events and prevents root-document scrolling; the messages list stays the only scrolling area. During text-chat input with the keyboard open, the nonessential session footer hides, keeping the message composer and Send button directly above the keyboard. Keyboard detection tracks viewport height relative to the unoccluded baseline and resets on rotation. Returning home removes the scroll lock. Text fields retain 16px fonts to avoid Safari focus zoom.
+
 ## Five-second rematching after Next (October 2026)
 
 Cloudflare's Durable Object matchmaking now temporarily excludes the previous stranger for **five seconds** after Next or a peer departure. It still prioritizes unfamiliar guests whenever available. If the previous pair are the only compatible waiting guests, a **Durable Object alarm** retries matching at the end of the cooldown, without requiring either device to click anything. Reports/blocks and bans remain enforced by the existing Neon-backed call creation endpoint, so blocked guests cannot reconnect. The legacy HTTP fallback already had no recent-peer exclusion and is unchanged.
