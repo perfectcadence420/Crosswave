@@ -64,7 +64,7 @@
   }
   function syncControls() {
     const eligible = ui.adult.checked && ui.rules.checked;
-    ui.start.disabled = !eligible || s.running || s.busy;
+    ui.start.disabled = !eligible || s.running || s.busy || s.stopPending;
     ui.start.textContent = s.running ? "Searching…" : s.busy ? "Connecting…" : eligible ? "Start " + s.mode + " chat" : "Agree to start";
     ui.stop.disabled = !s.running && !s.busy;
     ui.skip.disabled = !s.running || s.busy;
@@ -313,12 +313,12 @@
     s.signalTimer = null;
   }
   async function start() {
-    if (s.running || s.busy || !ui.adult.checked || !ui.rules.checked) return;
+    if (s.running || s.busy || s.stopPending || !ui.adult.checked || !ui.rules.checked) return;
     const epoch = ++s.epoch;
     s.busy = true; syncControls();
     try {
       if (s.mode === "video") await openMedia();
-      if (s.epoch !== epoch) return;
+      if (s.epoch !== epoch) { releaseMedia(); return; }
       await request("guest", "POST", { ageConfirmed: true, rulesAccepted: true });
       if (s.epoch !== epoch) return;
       if (s.mode === "video") {
@@ -349,6 +349,7 @@
   async function stop() {
     if ((!s.running && !s.busy) || s.stopPending) return;
     const wasRunning = s.running;
+    s.stopPending = wasRunning;
     s.epoch++;
     s.running = false;
     s.busy = false;
@@ -358,10 +359,9 @@
     syncControls();
     announce("Disconnected. Click Start whenever you're ready.");
     if (wasRunning) {
-      s.stopPending = true;
       try { await request("leave", "POST"); }
       catch { /* heartbeat expires stale sessions */ }
-      finally { s.stopPending = false; }
+      finally { s.stopPending = false; syncControls(); }
     }
   }
   async function skip() {
