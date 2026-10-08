@@ -40,6 +40,15 @@
         <div class="eyebrow"><span class="eyebrow-star">✳</span> UNEXPECTED CONNECTIONS</div>
         <h1>Good conversations<br>start <em>anywhere.</em></h1>
         <p class="hero-copy">Different people. Different places. One little hello. Meet someone new through video or text—where the conversation goes is up to you.</p>
+        <div class="onboarding">
+          <label for="nickname" class="nickname-label">YOUR NICKNAME</label>
+          <input id="nickname" name="nickname" type="text" maxlength="24" minlength="2" autocomplete="nickname" autocapitalize="words" spellcheck="false" placeholder="What should we call you?" aria-describedby="entryHint">
+          <div class="home-consent">
+            <label class="consent-check"><input type="checkbox" id="adult"> I'm 18 or older</label>
+            <label class="consent-check"><input type="checkbox" id="rules"> I agree to the <span class="inline-rule">community rules</span></label>
+          </div>
+          <p id="entryHint" class="entry-hint" role="status" aria-live="polite">Choose a nickname and accept both conditions to continue.</p>
+        </div>
         <div class="choice-heading">HOW DO YOU WANT TO CONNECT?</div>
         <div class="mode-cards">
           <button type="button" class="mode-card mode-card-video" id="videoMode" aria-pressed="true">
@@ -110,10 +119,11 @@
 
       <aside class="chat-panel" id="textarea" aria-label="Live text chat">
         <div class="chat-panel-header">
-          <div><strong>Messages</strong><span>Say something nice 👋</span></div>
+          <div><strong id="chatTitle">Messages</strong><span>Say something nice 👋</span></div>
           <button type="button" class="small-icon-button close-chat" id="closeChat" aria-label="Close messages">×</button>
         </div>
         <div id="messages" class="chat-messages" role="log" aria-live="polite" aria-label="Conversation messages"></div>
+        <div id="typingIndicator" class="typing-indicator hidden" role="status" aria-live="polite">Stranger is typing<span class="typing-dots">…</span></div>
         <form id="msgForm" class="chat-composer">
           <label class="sr-only" for="msg">Type a chat message</label>
           <input id="msg" maxlength="1000" autocomplete="off" placeholder="Write a message..." disabled>
@@ -140,11 +150,7 @@
           <button type="button" class="report-action" id="report" disabled title="Report stranger">Report</button>
         </div>
       </div>
-      <div class="consent-row">
-        <label class="consent-check"><input type="checkbox" id="adult"> I'm 18 or older</label>
-        <label class="consent-check"><input type="checkbox" id="rules"> I agree to the <span class="inline-rule">community rules</span></label>
-        <span id="consent" class="consent-hint">Confirm both to start.</span>
-      </div>
+
     </footer>
   </main>
 
