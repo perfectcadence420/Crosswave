@@ -1,4 +1,4 @@
-/* Crosswave phase 2: real two-person WebRTC and text matchmaking. */
+/* Straylo: immersive random video + text chat, backed by HTTP or WebSocket matchmaking. */
 (() => {
   "use strict";
   const el = id => document.getElementById(id);
@@ -15,7 +15,12 @@
     consent: el("consent"), safety: el("safety"), safetyText: el("safetyText"),
     reportForm: el("reportForm"), reportReason: el("reportReason"),
     reportDetails: el("reportDetails"), reportSubmit: el("reportSubmit"),
-    sound: el("enableSound"), connectionStats: el("connectionStats"), quality: el("quality")
+    sound: el("enableSound"), connectionStats: el("connectionStats"),
+    entryPage: el("entryPage"), chatPage: el("chatPage"),
+    backHome: el("backHome"), modeTitle: el("modeTitle"),
+    headerStatus: el("headerStatus"), mobileChatToggle: el("mobileChatToggle"),
+    closeChat: el("closeChat"), chatBackdrop: el("chatBackdrop"),
+    unreadCount: el("unreadCount"), cancelReport: el("cancelReport"), quality: el("quality")
   };
   const s = {
     mode: "video", running: false, busy: false, epoch: 0,
@@ -24,7 +29,7 @@
     pollTimer: null, signalTimer: null, statusBusy: false, signalBusy: false,
     lastError: 0, connected: false, connectionFailed: false, reportCallId: null,
     turnAvailable: false, connectionTimer: null, statsTimer: null, statsBusy: false,
-    realtime: false, socket: null, pendingSignals: [], previousVideoStats: null
+    realtime: false, socket: null, pendingSignals: [], unread: 0, previousVideoStats: null
   };
   // The older 360p/900 kbps preset hurt quality in our early beta.
   // Keep it available for slower networks, but prefer 720p for normal calls.
@@ -40,7 +45,11 @@
   const SIGNAL_MS = 700;
   const isActive = (epoch, callId) => s.running && s.epoch === epoch && s.callId === callId;
 
-  function announce(message) { ui.status.textContent = message; }
+  function announce(message) {
+    ui.status.textContent = message;
+    ui.headerStatus.textContent = s.connected || (s.mode === "text" && s.callId)
+      ? "Connected" : s.running ? (s.callId ? "Connecting" : "Searching") : "Ready to connect";
+  }
   function showRemote(message) {
     ui.remotePlaceholder.classList.remove("hidden");
     el("remoteMessage").textContent = message;
@@ -55,6 +64,12 @@
     div.textContent = message;
     ui.messages.appendChild(div);
     ui.messages.scrollTop = ui.messages.scrollHeight;
+    if (role === "remote-text" && s.mode === "video" &&
+      window.matchMedia?.("(max-width: 760px)").matches && !ui.textArea.classList.contains("open")) {
+      s.unread += 1;
+      ui.unreadCount.textContent = s.unread > 9 ? "9+" : String(s.unread);
+      ui.unreadCount.classList.remove("hidden");
+    }
   }
   async function request(path, method = "GET", data) {
     const controller = new AbortController();
@@ -87,7 +102,7 @@
     ui.videoMode.disabled = s.running || s.busy;
     ui.textMode.disabled = s.running || s.busy;
     ui.quality.disabled = s.running || s.busy;
-    ui.message.disabled = !s.running || !s.callId || s.mode !== "text";
+    ui.message.disabled = !s.running || !s.callId;
     ui.send.disabled = ui.message.disabled;
     ui.report.disabled = !s.running || !s.callId;
     ui.consent.textContent = eligible
@@ -98,16 +113,62 @@
     ui.videoMode.setAttribute("aria-pressed", String(s.mode === "video"));
     ui.textMode.setAttribute("aria-pressed", String(s.mode === "text"));
   }
+  function closeChatDrawer() {
+    ui.textArea.classList.remove("open");
+    ui.chatBackdrop.classList.add("hidden");
+    ui.mobileChatToggle.setAttribute("aria-expanded", "false");
+  }
+  function openChatDrawer() {
+    if (s.mode === "text") return;
+    ui.textArea.classList.add("open");
+    ui.chatBackdrop.classList.remove("hidden");
+    ui.mobileChatToggle.setAttribute("aria-expanded", "true");
+    s.unread = 0;
+    ui.unreadCount.classList.add("hidden");
+    ui.messages.scrollTop = ui.messages.scrollHeight;
+    ui.message.focus?.();
+  }
+  function setChatPageVisible(visible) {
+    ui.entryPage.classList.toggle("hidden", visible);
+    ui.chatPage.classList.toggle("hidden", !visible);
+    document.body.classList.toggle("in-session", visible);
+    if (!visible) closeChatDrawer();
+  }
   function switchMode(next) {
-    if (s.running || s.busy || s.mode === next) return;
+    if (s.running || s.busy || !["video","text"].includes(next)) return;
     s.mode = next;
     ui.videoArea.classList.toggle("hidden", next !== "video");
-    ui.textArea.classList.toggle("hidden", next !== "text");
-    ui.avControls.classList.toggle("hidden", next !== "video");
+    ui.textArea.classList.remove("hidden");
+    ui.chatPage.classList.toggle("video-mode", next === "video");
+    ui.chatPage.classList.toggle("text-mode", next === "text");
+    ui.modeTitle.textContent = next === "video" ? "Video chat" : "Text chat";
+    ui.mobileChatToggle.classList.toggle("hidden", next === "text");
+    ui.avControls.classList.toggle("hidden", next === "text");
+    closeChatDrawer();
     if (next === "text") releaseMedia();
     resetMessages();
-    announce(next === "video" ? "Camera and microphone can be previewed before starting." : "Text chat selected. Click Start to find someone.");
+    announce(next === "video"
+      ? "Ready to start a video call. Messages are available during the call."
+      : "Ready for a text conversation. Confirm the rules and press Start.");
     syncControls();
+  }
+  function openMode(next, pushHistory = true) {
+    if (s.running || s.busy) return;
+    switchMode(next);
+    setChatPageVisible(true);
+    if (pushHistory) window.history.pushState({mode:next},"", "/chat/" + next + window.location.search);
+  }
+  async function goHome(pushHistory = true) {
+    if (s.running || s.busy) await stop();
+    setChatPageVisible(false);
+    if (pushHistory) window.history.pushState({mode:null},"","/" + window.location.search);
+    document.title = "Straylo — Meet the unexpected";
+  }
+  async function restoreRoute() {
+    const mode = /^\/chat\/(video|text)\/?$/.exec(window.location.pathname)?.[1];
+    if (s.running || s.busy) await stop();
+    if (mode) openMode(mode,false);
+    else setChatPageVisible(false);
   }
   function updateTrackButtons() {
     const vt = s.stream?.getVideoTracks()[0];
@@ -185,6 +246,9 @@
     s.cursor = "0";
     s.callId = null;
     s.peerId = null;
+    s.unread = 0;
+    ui.unreadCount.classList.add("hidden");
+    resetMessages();
     showRemote("Searching for someone…");
     syncControls();
   }
@@ -354,7 +418,8 @@
   async function handleSignal(message, epoch, callId) {
     if (!isActive(epoch, callId)) return;
     if (message.kind === "text") {
-      if (s.mode === "text" && typeof message.payload?.text === "string") appendMessage("Stranger: " + message.payload.text, "remote-text");
+      if (typeof message.payload?.text === "string")
+        appendMessage(message.payload.text, "remote-text");
       return;
     }
     const pc = s.pc;
@@ -406,9 +471,11 @@
     announce(s.mode === "video"
       ? (s.turnAvailable ? "Match found! Securing video (TURN relay available)…" : "Match found! Trying direct video (TURN unavailable)…")
       : "Connected! Say hello.");
+    ui.messages.replaceChildren();
+    appendMessage("You're connected! Say hello 👋", "system");
     if (s.mode === "text") {
-      ui.messages.replaceChildren();
-      appendMessage("Connected to a stranger. Be respectful and stay safe.", "system");
+      announce("Connected! Say hello.");
+      syncControls();
       return;
     }
     showRemote("Connecting securely…");
@@ -643,13 +710,13 @@
   async function sendText(event) {
     event.preventDefault();
     const text = ui.message.value.trim();
-    if (!text || !s.running || !s.callId || s.mode !== "text" || text.length > 1000) return;
+    if (!text || !s.running || !s.callId || text.length > 1000) return;
     const epoch = s.epoch, callId = s.callId;
     ui.send.disabled = true;
     try {
       await sendSignal(callId, epoch, "text", { text });
       if (isActive(epoch, callId)) {
-        appendMessage("You: " + text, "self-text");
+        appendMessage(text, "self-text");
         ui.message.value = "";
       }
     } catch (error) { announce("Message not sent: " + error.message); }
@@ -657,7 +724,7 @@
   }
   ui.cam.addEventListener("click", () => void toggleTrack("video"));
   ui.mic.addEventListener("click", () => void toggleTrack("audio"));
-  ui.videoMode.addEventListener("click", () => switchMode("video"));
+  ui.videoMode.addEventListener("click", () => openMode("video"));
   ui.quality.addEventListener("change", () => {
     if (!s.running && !s.busy) {
       // If a preview was opened before selecting a profile, release it.
@@ -666,7 +733,7 @@
       announce("Video quality: " + ui.quality.selectedOptions[0].textContent + ". Ready to connect.");
     }
   });
-  ui.textMode.addEventListener("click", () => switchMode("text"));
+  ui.textMode.addEventListener("click", () => openMode("text"));
   ui.adult.addEventListener("change", syncControls);
   ui.rules.addEventListener("change", syncControls);
   ui.start.addEventListener("click", () => void start());
@@ -674,6 +741,15 @@
   ui.skip.addEventListener("click", () => void skip());
   ui.report.addEventListener("click", openReport);
   ui.reportForm.addEventListener("submit", event => void submitReport(event));
+  ui.cancelReport.addEventListener("click", () => ui.safety.close());
+  ui.backHome.addEventListener("click", () => void goHome());
+  ui.mobileChatToggle.addEventListener("click", () => {
+    if (ui.textArea.classList.contains("open")) closeChatDrawer();
+    else openChatDrawer();
+  });
+  ui.closeChat.addEventListener("click", closeChatDrawer);
+  ui.chatBackdrop.addEventListener("click", closeChatDrawer);
+  window.addEventListener("popstate", () => void restoreRoute());
   ui.messageForm.addEventListener("submit", event => void sendText(event));
   ui.sound.addEventListener("click", () => ui.remote.play().then(() => ui.sound.classList.add("hidden")).catch(() => announce("Enable sound in your browser to hear your match.")));
   window.addEventListener("pagehide", () => {
@@ -686,4 +762,7 @@
   el("year").textContent = String(new Date().getFullYear());
   resetMessages();
   syncControls();
+  const initialMode = /^\/chat\/(video|text)\/?$/.exec(window.location.pathname)?.[1];
+  if (initialMode) openMode(initialMode,false);
+  else setChatPageVisible(false);
 })();
