@@ -465,8 +465,8 @@
       socket.onopen=()=>{clearTimeout(timeout);resolve()};
       socket.onerror=()=>{clearTimeout(timeout);reject(new Error("Socket failure"))};
       socket.onclose=()=>{clearTimeout(timeout);reject(new Error("Socket closed"))};
-    }); } catch(error) { closeRealtime(); throw error; }
-    if (!s.running || s.epoch!==epoch || s.socket!==socket) {closeRealtime();return;}
+    }); } catch(error) { if(s.socket===socket)closeRealtime(); throw error; }
+    if (!s.running || s.epoch!==epoch || s.socket!==socket) {if(s.socket===socket)closeRealtime();return;}
     socket.onerror=()=>{if(s.socket===socket)announce("Realtime network trouble…");};
     socket.onclose=()=>{
       if(s.socket!==socket||!s.running)return;
@@ -520,7 +520,10 @@
           if(s.epoch!==epoch||!s.running)return;
           await connectRealtime(config.url,ticket,epoch);
           return;
-        }catch{closeRealtime();announce("Realtime unavailable; using original matching…");}
+        }catch{
+          if(s.epoch!==epoch || !s.running)return;
+          closeRealtime();announce("Realtime unavailable; using original matching…");
+        }
       }
       startPolling();
       await joinQueue(epoch);
