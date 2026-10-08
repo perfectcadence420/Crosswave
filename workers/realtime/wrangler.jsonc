@@ -19,7 +19,7 @@
     }
   },
   "vars": {
-    "ALLOWED_ORIGINS": "https://crosswave-eta.vercel.app",
+    "ALLOWED_ORIGINS": "https://crosswave-eta.vercel.app,https://straylo.com,https://www.straylo.com",
     "API_BASE_URL": "https://crosswave-eta.vercel.app"
   }
 }
