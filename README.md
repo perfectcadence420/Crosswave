@@ -1,4 +1,22 @@
-# Crosswave — first live two-person video chat
+# Straylo — random video and text chat
+
+Straylo is the public-facing brand for this repository. The original Crosswave infrastructure identifiers, Neon schema, guest cookie, Vercel project, and Cloudflare Worker name are intentionally retained for compatibility while the domain transition is pending.
+
+## New mobile-first experience
+- Landing screen has two choices: **Video chat** and **Text chat**.
+- Choosing a mode opens a full-height app route: `/chat/video` or `/chat/text`.
+- Desktop video places the stranger's video prominently next to your own, with persistent messages on the side.
+- Mobile video uses a large stranger view and picture-in-picture for your camera. The Messages icon opens the integrated text chat as a drawer.
+- **Both video and text chat support sending and receiving text messages**. The mode only decides whether WebRTC camera/audio is included.
+- **Back** disconnects the session and returns to the landing page, as does browser back.
+- The 18+ and rules checkboxes remain mandatory to connect. Report, block, Next, Stop, quality profiles and Cloudflare TURN are retained.
+- The regular site still uses HTTP matchmaking; the test link with `?realtime=1` opts into the Cloudflare Durable Object WebSocket canary.
+- Client-side routes need the Vercel rewrite in `vercel.json`.
+
+**Domain:** `straylo.com` was available at the last registry lookup, but is **not purchased or connected**. Do not switch Cloudflare Worker allowed origins or `API_BASE_URL` until the purchased domain is verified and Vercel is configured to serve it.
+
+---
+
 
 This repository includes the Crosswave static landing page, its browser WebRTC client, and Vercel serverless APIs backed by Neon Postgres.
 
