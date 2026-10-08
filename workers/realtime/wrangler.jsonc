@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/wrangler@latest/config-schema.json",
+  "name": "crosswave-realtime",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-08",
+  "workers_dev": true,
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MATCHMAKER",
+        "class_name": "Matchmaker"
+      }
+    ]
+  },
+  "exports": {
+    "Matchmaker": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
+  "vars": {
+    "ALLOWED_ORIGINS": "https://crosswave-eta.vercel.app",
+    "API_BASE_URL": "https://crosswave-eta.vercel.app"
+  }
+}
