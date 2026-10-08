@@ -23,7 +23,8 @@
     cursor: "0", queuedIce: [], iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
     pollTimer: null, signalTimer: null, statusBusy: false, signalBusy: false,
     lastError: 0, connected: false, connectionFailed: false, reportCallId: null,
-    turnAvailable: false, connectionTimer: null, statsTimer: null, statsBusy: false
+    turnAvailable: false, connectionTimer: null, statsTimer: null, statsBusy: false,
+    realtime: false, socket: null, pendingSignals: []
   };
   const STEP_MS = 1400;
   const SIGNAL_MS = 700;
@@ -167,6 +168,7 @@
     s.connected = false;
     s.connectionFailed = false;
     s.queuedIce = [];
+    s.pendingSignals = [];
     s.cursor = "0";
     s.callId = null;
     s.peerId = null;
@@ -228,6 +230,11 @@
 
   async function sendSignal(callId, epoch, kind, payload) {
     if (!isActive(epoch, callId)) return;
+    if (s.realtime) {
+      if (s.socket?.readyState !== WebSocket.OPEN) throw new Error("Socket closed");
+      s.socket.send(JSON.stringify({type:"signal",callId,kind,payload}));
+      return;
+    }
     return request("signal", "POST", { callId, kind, payload });
   }
   async function startPeer(callId, epoch, initiator) {
@@ -390,6 +397,10 @@
     if (!s.running || s.epoch !== epoch) return;
     announce("Looking for a stranger…");
     showRemote("Looking for a stranger…");
+    if (s.realtime) {
+      s.socket.send(JSON.stringify({type:"join",mode:s.mode}));
+      return;
+    }
     const result = await request("match", "POST", { mode: s.mode });
     if (!s.running || s.epoch !== epoch) return;
     if (result.state === "matched") await setMatch(result, epoch);
