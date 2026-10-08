@@ -57,3 +57,10 @@ Redeploy Crosswave after adding the variables (environment changes do not change
 The original generic provider environment variables `TURN_URLS`, `TURN_USERNAME`, and `TURN_CREDENTIAL` also remain supported for an alternative TURN provider. Cloudflare TURN docs: https://developers.cloudflare.com/realtime/turn/generate-credentials/
 
 For the first test, use two different devices or a normal and incognito browser window on the same exact domain, with cameras allowed. Confirm the status shows "TURN relay available" after matching. If there are still failures, inspect browser chrome://webrtc-internals while the call is active to see the ICE candidate pair and connection state. Avoid sharing the full diagnostics dump because it can reveal network identifiers.
+
+## Connection quality and latency (v1 beta)
+The **Start** button now displays Searching → Connecting → Connected as the actual browser connection changes. Text chat becomes Connected on a successful match.
+
+To keep low-spec devices and cellular networks responsive, the default video capture target is **640×360 at 24 fps** with a 900 kbps maximum video encoding bitrate (where supported); the browser is allowed to adapt quality. Compatible receivers request a modest 60–80 ms jitter buffer target. This may trade sharpness or smoothness for lower delay; it cannot overcome network latency.
+
+Once video connects, an on-screen diagnostic shows **Route (direct/TURN), round-trip time (RTT), approximate average received video jitter buffer, and FPS** if the browser supports these WebRTC statistics. RTT and jitter buffer are **not** the total mouth-to-screen audio/video delay; recording an actual test is still the best way to estimate it. This display uses only counters and candidate types, and never shows network IPs or TURN secrets.
