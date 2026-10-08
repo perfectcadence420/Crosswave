@@ -15,7 +15,7 @@
     consent: el("consent"), safety: el("safety"), safetyText: el("safetyText"),
     reportForm: el("reportForm"), reportReason: el("reportReason"),
     reportDetails: el("reportDetails"), reportSubmit: el("reportSubmit"),
-    sound: el("enableSound"), connectionStats: el("connectionStats")
+    sound: el("enableSound"), connectionStats: el("connectionStats"), quality: el("quality")
   };
   const s = {
     mode: "video", running: false, busy: false, epoch: 0,
@@ -24,8 +24,18 @@
     pollTimer: null, signalTimer: null, statusBusy: false, signalBusy: false,
     lastError: 0, connected: false, connectionFailed: false, reportCallId: null,
     turnAvailable: false, connectionTimer: null, statsTimer: null, statsBusy: false,
-    realtime: false, socket: null, pendingSignals: []
+    realtime: false, socket: null, pendingSignals: [], previousVideoStats: null
   };
+  // The older 360p/900 kbps preset hurt quality in our early beta.
+  // Keep it available for slower networks, but prefer 720p for normal calls.
+  const VIDEO_PROFILES = Object.freeze({
+    balanced: {width:1280, height:720, fps:30, bitrate:1800000},
+    sharp: {width:1280, height:720, fps:30, bitrate:2700000},
+    low: {width:640, height:360, fps:24, bitrate:800000}
+  });
+  function videoProfile() {
+    return VIDEO_PROFILES[ui.quality.value] || VIDEO_PROFILES.balanced;
+  }
   const STEP_MS = 1400;
   const SIGNAL_MS = 700;
   const isActive = (epoch, callId) => s.running && s.epoch === epoch && s.callId === callId;
@@ -76,6 +86,7 @@
     ui.skip.disabled = !s.running || s.busy;
     ui.videoMode.disabled = s.running || s.busy;
     ui.textMode.disabled = s.running || s.busy;
+    ui.quality.disabled = s.running || s.busy;
     ui.message.disabled = !s.running || !s.callId || s.mode !== "text";
     ui.send.disabled = ui.message.disabled;
     ui.report.disabled = !s.running || !s.callId;
@@ -111,9 +122,10 @@
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera access requires HTTPS and a supported browser.");
     // Prefer responsiveness over high resolution for stranger-to-stranger video.
     // These are ideal constraints; browsers may choose other sizes when necessary.
+    const profile = videoProfile();
     const media = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 360 },
-        frameRate: { ideal: 24, max: 30 } },
+      video: { width: { ideal: profile.width }, height: { ideal: profile.height },
+        frameRate: { ideal: profile.fps, max: profile.fps } },
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
     s.stream = media;
@@ -150,6 +162,7 @@
     s.connectionTimer = null;
     s.statsTimer = null;
     s.statsBusy = false;
+    s.previousVideoStats = null;
     ui.connectionStats.textContent = "";
     ui.connectionStats.classList.add("hidden");
     if (s.pc) {
@@ -206,20 +219,28 @@
       const rtt = typeof pair?.currentRoundTripTime === "number"
         ? "RTT: " + Math.round(pair.currentRoundTripTime * 1000) + " ms"
         : null;
-      let buffer = null, fps = null;
+      let buffer = null, fps = null, receivedResolution = null;
       for (const stat of report.values()) {
         if (stat.type !== "inbound-rtp" || (stat.kind || stat.mediaType) !== "video") continue;
-        if (stat.jitterBufferEmittedCount > 0 && Number.isFinite(stat.jitterBufferDelay)) {
-          // Average time video frames spend in the receive jitter buffer,
-          // not the full end-to-end delay.
-          buffer = "Video buffer: " + Math.round(
-            (stat.jitterBufferDelay / stat.jitterBufferEmittedCount) * 1000
-          ) + " ms";
+        const count = stat.jitterBufferEmittedCount;
+        const delay = stat.jitterBufferDelay;
+        if (Number.isFinite(count) && Number.isFinite(delay)) {
+          const prev = s.previousVideoStats;
+          // Use the last reporting interval, not the lifetime average, so
+          // an old high-buffer period doesn't mislead throughout the call.
+          const frames = prev ? count-prev.count : count;
+          const seconds = prev ? delay-prev.delay : delay;
+          if (frames > 0 && seconds >= 0)
+            buffer = "Recent buffer: " + Math.round((seconds/frames)*1000) + " ms";
+          s.previousVideoStats = {count,delay};
         }
-        if (Number.isFinite(stat.framesPerSecond)) fps = Math.round(stat.framesPerSecond) + " fps";
+        if (Number.isFinite(stat.framesPerSecond))
+          fps = Math.round(stat.framesPerSecond) + " fps";
+        if (Number.isFinite(stat.frameWidth) && Number.isFinite(stat.frameHeight))
+          receivedResolution = stat.frameWidth + "×" + stat.frameHeight;
         break;
       }
-      ui.connectionStats.textContent = [connectionRoute,rtt,buffer,fps].filter(Boolean).join("  ·  ");
+      ui.connectionStats.textContent = [connectionRoute,rtt,buffer,receivedResolution,fps].filter(Boolean).join("  ·  ");
       ui.connectionStats.classList.remove("hidden");
     } catch {
       // Diagnostics are best-effort; never interrupt a working video call.
@@ -247,14 +268,15 @@
     }, 22000);
     s.pc = pc;
     s.queuedIce = [];
+    const profile = videoProfile();
     for (const track of s.stream.getTracks()) {
       const sender = pc.addTrack(track, s.stream);
       // Avoid large encoded frames building a queue on slower connections.
       if (track.kind === "video" && sender.getParameters && sender.setParameters) {
         const parameters = sender.getParameters();
         if (parameters.encodings?.length) {
-          parameters.encodings[0].maxBitrate = 900000;
-          parameters.encodings[0].maxFramerate = 24;
+          parameters.encodings[0].maxBitrate = profile.bitrate;
+          parameters.encodings[0].maxFramerate = profile.fps;
           parameters.degradationPreference = "maintain-framerate";
           sender.setParameters(parameters).catch(() => {});
         }
@@ -636,6 +658,14 @@
   ui.cam.addEventListener("click", () => void toggleTrack("video"));
   ui.mic.addEventListener("click", () => void toggleTrack("audio"));
   ui.videoMode.addEventListener("click", () => switchMode("video"));
+  ui.quality.addEventListener("change", () => {
+    if (!s.running && !s.busy) {
+      // If a preview was opened before selecting a profile, release it.
+      // The next preview or call uses the selected camera constraints.
+      releaseMedia();
+      announce("Video quality: " + ui.quality.selectedOptions[0].textContent + ". Ready to connect.");
+    }
+  });
   ui.textMode.addEventListener("click", () => switchMode("text"));
   ui.adult.addEventListener("change", syncControls);
   ui.rules.addEventListener("change", syncControls);

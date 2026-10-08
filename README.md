@@ -64,3 +64,16 @@ The **Start** button now displays Searching → Connecting → Connected as the 
 To keep low-spec devices and cellular networks responsive, the default video capture target is **640×360 at 24 fps** with a 900 kbps maximum video encoding bitrate (where supported); the browser is allowed to adapt quality. Compatible receivers request a modest 60–80 ms jitter buffer target. This may trade sharpness or smoothness for lower delay; it cannot overcome network latency.
 
 Once video connects, an on-screen diagnostic shows **Route (direct/TURN), round-trip time (RTT), approximate average received video jitter buffer, and FPS** if the browser supports these WebRTC statistics. RTT and jitter buffer are **not** the total mouth-to-screen audio/video delay; recording an actual test is still the best way to estimate it. This display uses only counters and candidate types, and never shows network IPs or TURN secrets.
+
+
+## Video quality profiles (October 2026)
+
+The beta previously forced every user to 640×360 at 24 fps and a 900 Kbps video bitrate ceiling. This visibly degraded quality in normal calls. Camera quality is now selectable **before** joining a call:
+
+- **Balanced** (default): target 1280×720, 30 fps, up to 1.8 Mbps video.
+- **Sharper**: target 1280×720, 30 fps, up to 2.7 Mbps video.
+- **Low data**: target 640×360, 24 fps, up to 800 Kbps video.
+
+These are browser hints and encoding *ceilings*, not fixed bitrates or a promise of transmitted resolution. Higher settings can increase TURN traffic and may worsen lag on congested networks; use Low data on unstable mobile or slow connections. Reload or Stop and Start to change quality.
+
+Connection diagnostics now show actual *received* frame resolution and a recent (roughly last 3 seconds) jitter-buffer average, computed from deltas of WebRTC stats rather than a running lifetime average. This is still **not** end-to-end camera-to-display latency. TURN transport and geographic latency are unchanged by the quality selector.
