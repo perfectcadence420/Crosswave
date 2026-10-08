@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+ <meta name="robots" content="noindex,nofollow,noarchive">
+ <meta name="theme-color" content="#090d16">
+ <title>Straylo Admin · Dashboard</title>
+ <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+ <link rel="stylesheet" href="/admin/admin.css">
+ <script src="/admin/dashboard.js" defer></script>
+</head>
+<body>
+ <div class="page">
+  <header class="topbar">
+   <a class="brand" href="/" aria-label="Go to Straylo homepage"><span class="mark"><svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><path d="M13 39c12-24 26-24 38 0M17 22c12 24 22 24 34 0" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/></svg></span>straylo<span class="dot">.</span><span class="admin-suffix">/ admin</span></a>
+   <div class="top-actions"><span id="syncLabel" class="sync-label">Private analytics</span><a class="site-link" href="/" target="_blank" rel="noopener">Visit website ↗</a><button class="small ghost hidden" type="button" id="logoutBtn">Sign out</button></div>
+  </header>
+  <section id="loginView" class="login-shell">
+   <form id="loginForm" class="login-card">
+    <div class="eyebrow"><span class="spark">✳</span> PRIVATE WORKSPACE</div>
+    <h1>Know what's <em>happening.</em></h1>
+    <p>Sign in to see Straylo's live activity and growth. This page is only for authorized administrators.</p>
+    <label for="password">Admin password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Enter your dashboard password" minlength="24">
+    <button type="submit" id="loginBtn" class="primary">Unlock dashboard <span>→</span></button>
+    <p class="form-error hidden" role="alert" id="loginError"></p>
+    <div class="login-footnote"><span class="lock-icon">◆</span> Your password never appears in website code.</div>
+   </form>
+  </section>
+  <main id="dashboard" class="dashboard hidden">
+   <section class="intro"><div><div class="eyebrow"><span class="spark">✳</span> STRAYLO AT A GLANCE</div><h1>Your world, <em>in numbers.</em></h1><p>Live chat activity and the metrics that matter when advertising.</p></div>
+     <div class="toolbar"><div class="range-group" aria-label="Reporting date range"><button type="button" data-range="24h">24 hours</button><button type="button" data-range="7d" class="selected">7 days</button><button type="button" data-range="30d">30 days</button></div><button type="button" class="refresh-btn" id="refreshBtn" aria-label="Refresh dashboard">↻ Refresh</button></div>
+   </section>
+   <p id="dashError" role="status" class="notice hidden"></p>
+   <div class="section-heading"><div><h2>Live right now</h2><span>From Cloudflare matchmaker · refreshed every 30 seconds</span></div><span id="liveBadge" class="live-badge">Checking…</span></div>
+   <section class="metric-grid" aria-label="Live activity">
+    <article class="metric featured"><span class="metric-label">People connected <span class="info-icon" title="Currently open WebSocket connections, including chatting and waiting">ⓘ</span></span><div class="metric-value" id="livePeople">—</div><div class="metric-foot">Active Straylo connections</div></article>
+    <article class="metric"><span class="metric-label">Waiting to match</span><div class="metric-value" id="liveWaiting">—</div><div class="metric-foot" id="waitingSplit">Text and video queues</div></article>
+    <article class="metric"><span class="metric-label">Active conversations</span><div class="metric-value" id="liveCalls">—</div><div class="metric-foot" id="activeSplit">Live video and text calls</div></article>
+   </section>
+   <div class="section-heading lower"><div><h2>Growth & engagement</h2><span id="periodLabel">Last 7 days · UTC</span></div></div>
+   <section class="metric-grid four" aria-label="Historical activity">
+    <article class="metric"><span class="metric-label">Guest sessions started</span><div class="metric-value" id="newGuests">—</div><div class="metric-foot">People who started a guest session</div></article>
+    <article class="metric"><span class="metric-label">Matches formed</span><div class="metric-value" id="matches">—</div><div class="metric-foot">Includes repeat matches · not verified call quality</div></article>
+    <article class="metric"><span class="metric-label">Average completed call</span><div class="metric-value" id="avgDuration">—</div><div class="metric-foot" id="durationSub">Based on finished calls</div></article>
+    <article class="metric"><span class="metric-label">Conversations 30s+</span><div class="metric-value" id="longCalls">—</div><div class="metric-foot">Finished conversations that lasted 30+ seconds</div></article>
+   </section>
+   <section class="main-panels">
+    <article class="panel trend-panel"><div class="panel-head"><div><h3>Activity over time</h3><p>How people are joining and matching</p></div><div class="legend"><span><i class="legend-guest"></i> Guest sessions</span><span><i class="legend-match"></i> Matches</span></div></div><div class="chart" id="trendChart" role="img" aria-label="Guest sessions and matches over time"></div><p class="chart-caption">All times UTC. Matching the same person again counts as another match.</p></article>
+    <article class="panel safety-panel"><div class="panel-head"><div><h3>Safety & moderation</h3><p>Reports submitted by users</p></div><span class="shield">✳</span></div>
+      <div class="safety-stats"><div><span>Total reports</span><strong id="totalReports">—</strong></div><div><span>Still open</span><strong id="openReports">—</strong></div><div><span>Reports per 100 matches</span><strong id="reportRate">—</strong></div></div>
+      <h4>Reasons reported</h4><div id="reportReasons" class="reason-list"><p class="empty">Checking report data…</p></div>
+    </article>
+   </section>
+   <section class="panel manage-panel"><div class="panel-head"><div><h3>Infrastructure & spending</h3><p>Check your billing allowances separately in each provider</p></div><span class="manage-note">External usage dashboards ↗</span></div>
+    <div class="platform-links"><a href="https://dash.cloudflare.com/" rel="noopener noreferrer" target="_blank"><span class="platform-symbol">☁</span><span><strong>Cloudflare</strong><small>TURN relay bandwidth, Workers, Durable Objects</small></span><b>↗</b></a><a href="https://console.neon.tech/" rel="noopener noreferrer" target="_blank"><span class="platform-symbol neon-mark">◈</span><span><strong>Neon</strong><small>Database compute, storage, transfer</small></span><b>↗</b></a><a href="https://vercel.com/dashboard" rel="noopener noreferrer" target="_blank"><span class="platform-symbol vercel-mark">▲</span><span><strong>Vercel</strong><small>Website bandwidth, function usage, billing</small></span><b>↗</b></a></div>
+   </section>
+   <footer class="foot"><span>Straylo internal analytics · No chat contents collected here</span><span id="lastChecked">Waiting for first update…</span></footer>
+  </main>
+ </div>
+</body>
+</html>
