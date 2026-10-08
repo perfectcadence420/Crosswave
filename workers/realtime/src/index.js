@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const output = (data, code = 200) => new Response(JSON.stringify(data), {
   status:code, headers:{"Content-Type":"application/json","Cache-Control":"no-store"}
 });
