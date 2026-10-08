@@ -20,7 +20,7 @@
     backHome: el("backHome"), modeTitle: el("modeTitle"),
     headerStatus: el("headerStatus"), mobileChatToggle: el("mobileChatToggle"),
     closeChat: el("closeChat"), chatBackdrop: el("chatBackdrop"),
-    unreadCount: el("unreadCount"), cancelReport: el("cancelReport"), quality: el("quality")
+    unreadCount: el("unreadCount"), cancelReport: el("cancelReport")
   };
   const s = {
     mode: "video", running: false, busy: false, epoch: 0,
@@ -31,16 +31,12 @@
     turnAvailable: false, connectionTimer: null, statsTimer: null, statsBusy: false,
     realtime: false, socket: null, pendingSignals: [], unread: 0, previousVideoStats: null
   };
-  // The older 360p/900 kbps preset hurt quality in our early beta.
-  // Keep it available for slower networks, but prefer 720p for normal calls.
-  const VIDEO_PROFILES = Object.freeze({
-    balanced: {width:1280, height:720, fps:30, bitrate:1800000},
-    sharp: {width:1280, height:720, fps:30, bitrate:2700000},
-    low: {width:640, height:360, fps:24, bitrate:800000}
+  // A single high-quality camera target for all users. These are ideal
+  // constraints and an outbound bitrate ceiling, not guaranteed stream specs.
+  // WebRTC remains free to adapt resolution/bitrate to real network conditions.
+  const VIDEO_PROFILE = Object.freeze({
+    width: 1920, height: 1080, fps: 30, bitrate: 5000000
   });
-  function videoProfile() {
-    return VIDEO_PROFILES[ui.quality.value] || VIDEO_PROFILES.balanced;
-  }
   const STEP_MS = 1400;
   const SIGNAL_MS = 700;
   const isActive = (epoch, callId) => s.running && s.epoch === epoch && s.callId === callId;
@@ -101,7 +97,6 @@
     ui.skip.disabled = !s.running || s.busy;
     ui.videoMode.disabled = s.running || s.busy;
     ui.textMode.disabled = s.running || s.busy;
-    ui.quality.disabled = s.running || s.busy;
     ui.message.disabled = !s.running || !s.callId;
     ui.send.disabled = ui.message.disabled;
     ui.report.disabled = !s.running || !s.callId;
@@ -181,12 +176,11 @@
   async function openMedia() {
     if (s.stream?.getTracks().every(t => t.readyState === "live")) return;
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera access requires HTTPS and a supported browser.");
-    // Prefer responsiveness over high resolution for stranger-to-stranger video.
-    // These are ideal constraints; browsers may choose other sizes when necessary.
-    const profile = videoProfile();
+    // Prefer full-HD capture when supported; browsers and webcams can select
+    // lower resolutions or frame rates when necessary.
     const media = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: profile.width }, height: { ideal: profile.height },
-        frameRate: { ideal: profile.fps, max: profile.fps } },
+      video: { width: { ideal: VIDEO_PROFILE.width }, height: { ideal: VIDEO_PROFILE.height },
+        frameRate: { ideal: VIDEO_PROFILE.fps, max: VIDEO_PROFILE.fps } },
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
     s.stream = media;
@@ -332,16 +326,17 @@
     }, 22000);
     s.pc = pc;
     s.queuedIce = [];
-    const profile = videoProfile();
     for (const track of s.stream.getTracks()) {
       const sender = pc.addTrack(track, s.stream);
       // Avoid large encoded frames building a queue on slower connections.
       if (track.kind === "video" && sender.getParameters && sender.setParameters) {
         const parameters = sender.getParameters();
         if (parameters.encodings?.length) {
-          parameters.encodings[0].maxBitrate = profile.bitrate;
-          parameters.encodings[0].maxFramerate = profile.fps;
-          parameters.degradationPreference = "maintain-framerate";
+          parameters.encodings[0].maxBitrate = VIDEO_PROFILE.bitrate;
+          parameters.encodings[0].maxFramerate = VIDEO_PROFILE.fps;
+          // Prefer a reasonable trade-off rather than freezing video to
+          // preserve resolution on congested links.
+          parameters.degradationPreference = "balanced";
           sender.setParameters(parameters).catch(() => {});
         }
       }
@@ -725,14 +720,6 @@
   ui.cam.addEventListener("click", () => void toggleTrack("video"));
   ui.mic.addEventListener("click", () => void toggleTrack("audio"));
   ui.videoMode.addEventListener("click", () => openMode("video"));
-  ui.quality.addEventListener("change", () => {
-    if (!s.running && !s.busy) {
-      // If a preview was opened before selecting a profile, release it.
-      // The next preview or call uses the selected camera constraints.
-      releaseMedia();
-      announce("Video quality: " + ui.quality.selectedOptions[0].textContent + ". Ready to connect.");
-    }
-  });
   ui.textMode.addEventListener("click", () => openMode("text"));
   ui.adult.addEventListener("change", syncControls);
   ui.rules.addEventListener("change", syncControls);

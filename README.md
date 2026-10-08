@@ -84,14 +84,14 @@ To keep low-spec devices and cellular networks responsive, the default video cap
 Once video connects, an on-screen diagnostic shows **Route (direct/TURN), round-trip time (RTT), approximate average received video jitter buffer, and FPS** if the browser supports these WebRTC statistics. RTT and jitter buffer are **not** the total mouth-to-screen audio/video delay; recording an actual test is still the best way to estimate it. This display uses only counters and candidate types, and never shows network IPs or TURN secrets.
 
 
-## Video quality profiles (October 2026)
+## Unified video quality (October 2026)
 
-The beta previously forced every user to 640×360 at 24 fps and a 900 Kbps video bitrate ceiling. This visibly degraded quality in normal calls. Camera quality is now selectable **before** joining a call:
+Straylo now uses **one video profile** for everyone. There is no quality selector.
 
-- **Balanced** (default): target 1280×720, 30 fps, up to 1.8 Mbps video.
-- **Sharper**: target 1280×720, 30 fps, up to 2.7 Mbps video.
-- **Low data**: target 640×360, 24 fps, up to 800 Kbps video.
+- Capture target: **1920×1080 at 30 fps** on cameras that support it, with browser fallback.
+- Outbound encoding: up to **5 Mbps** video bitrate and 30 fps; the browser dynamically adapts to congestion, CPU and hardware.
+- WebRTC transport and Cloudflare TURN settings are unchanged; these limits also apply to the HTTP matchmaking flow and optional WebSocket flow.
+- Actual received resolution, frame rate, recent jitter-buffer average, connection route and RTT remain available in diagnostics.
+- The high-quality profile may increase TURN usage or make weak network issues more apparent. We can adjust it centrally later without having to change a user setting.
 
-These are browser hints and encoding *ceilings*, not fixed bitrates or a promise of transmitted resolution. Higher settings can increase TURN traffic and may worsen lag on congested networks; use Low data on unstable mobile or slow connections. Reload or Stop and Start to change quality.
-
-Connection diagnostics now show actual *received* frame resolution and a recent (roughly last 3 seconds) jitter-buffer average, computed from deltas of WebRTC stats rather than a running lifetime average. This is still **not** end-to-end camera-to-display latency. TURN transport and geographic latency are unchanged by the quality selector.
+These are *targets and ceilings*, not fixed-quality guarantees. The previously observed approximately 1-fps playback and second-long jitter buffer are not automatically resolved by raising camera capture quality. Real-device testing remains necessary.
