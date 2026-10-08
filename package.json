@@ -7,6 +7,7 @@
     "node": "24.x"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.0"
+    "@neondatabase/serverless": "^1.0.0",
+    "sharp": "^0.34.4"
   }
 }
