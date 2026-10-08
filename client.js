@@ -15,14 +15,15 @@
     consent: el("consent"), safety: el("safety"), safetyText: el("safetyText"),
     reportForm: el("reportForm"), reportReason: el("reportReason"),
     reportDetails: el("reportDetails"), reportSubmit: el("reportSubmit"),
-    sound: el("enableSound")
+    sound: el("enableSound"), connectionStats: el("connectionStats")
   };
   const s = {
     mode: "video", running: false, busy: false, epoch: 0,
     callId: null, peerId: null, pc: null, stream: null,
     cursor: "0", queuedIce: [], iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
     pollTimer: null, signalTimer: null, statusBusy: false, signalBusy: false,
-    lastError: 0, connected: false, reportCallId: null, turnAvailable: false, connectionTimer: null
+    lastError: 0, connected: false, connectionFailed: false, reportCallId: null,
+    turnAvailable: false, connectionTimer: null, statsTimer: null, statsBusy: false
   };
   const STEP_MS = 1400;
   const SIGNAL_MS = 700;
@@ -65,7 +66,11 @@
   function syncControls() {
     const eligible = ui.adult.checked && ui.rules.checked;
     ui.start.disabled = !eligible || s.running || s.busy || s.stopPending;
-    ui.start.textContent = s.running ? "Searching…" : s.busy ? "Connecting…" : eligible ? "Start " + s.mode + " chat" : "Agree to start";
+    ui.start.textContent = s.busy ? "Connecting…"
+      : s.running ? (s.callId
+        ? (s.mode === "text" || s.connected ? "✓ Connected" : s.connectionFailed ? "Connection failed" : "Connecting…")
+        : "Searching…")
+      : eligible ? "Start " + s.mode + " chat" : "Agree to start";
     ui.stop.disabled = !s.running && !s.busy;
     ui.skip.disabled = !s.running || s.busy;
     ui.videoMode.disabled = s.running || s.busy;
@@ -103,7 +108,13 @@
   async function openMedia() {
     if (s.stream?.getTracks().every(t => t.readyState === "live")) return;
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera access requires HTTPS and a supported browser.");
-    const media = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    // Prefer responsiveness over high resolution for stranger-to-stranger video.
+    // These are ideal constraints; browsers may choose other sizes when necessary.
+    const media = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 360 },
+        frameRate: { ideal: 24, max: 30 } },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
     s.stream = media;
     ui.local.srcObject = media;
     ui.local.classList.remove("hidden");
@@ -134,7 +145,12 @@
 
   function clearPeer() {
     clearTimeout(s.connectionTimer);
+    clearInterval(s.statsTimer);
     s.connectionTimer = null;
+    s.statsTimer = null;
+    s.statsBusy = false;
+    ui.connectionStats.textContent = "";
+    ui.connectionStats.classList.add("hidden");
     if (s.pc) {
       const old = s.pc;
       s.pc = null;
@@ -149,6 +165,7 @@
     ui.remote.classList.add("hidden");
     ui.sound.classList.add("hidden");
     s.connected = false;
+    s.connectionFailed = false;
     s.queuedIce = [];
     s.cursor = "0";
     s.callId = null;
@@ -156,6 +173,59 @@
     showRemote("Searching for someone…");
     syncControls();
   }
+  async function updateConnectionStats() {
+    const pc = s.pc;
+    const callId = s.callId;
+    if (!pc || !s.connected || !callId || s.statsBusy || typeof pc.getStats !== "function") return;
+    s.statsBusy = true;
+    try {
+      const report = await pc.getStats();
+      if (pc !== s.pc || !s.connected || callId !== s.callId) return;
+      // Aggregate only anonymous network-quality counters. Do not reveal peer
+      // addresses, TURN credentials, device IDs, or session IDs.
+      let pair = null;
+      for (const stat of report.values()) {
+        if (stat.type === "transport" && stat.selectedCandidatePairId) {
+          pair = report.get(stat.selectedCandidatePairId);
+          if (pair) break;
+        }
+      }
+      if (!pair) for (const stat of report.values()) {
+        if (stat.type === "candidate-pair" && (stat.selected || (stat.nominated && stat.state === "succeeded"))) {
+          pair = stat;
+          break;
+        }
+      }
+      const local = pair?.localCandidateId ? report.get(pair.localCandidateId) : null;
+      const remote = pair?.remoteCandidateId ? report.get(pair.remoteCandidateId) : null;
+      const connectionRoute = !pair ? "Route: determining…"
+        : (local?.candidateType === "relay" || remote?.candidateType === "relay") ? "Route: TURN relay"
+        : "Route: direct";
+      const rtt = typeof pair?.currentRoundTripTime === "number"
+        ? "RTT: " + Math.round(pair.currentRoundTripTime * 1000) + " ms"
+        : null;
+      let buffer = null, fps = null;
+      for (const stat of report.values()) {
+        if (stat.type !== "inbound-rtp" || (stat.kind || stat.mediaType) !== "video") continue;
+        if (stat.jitterBufferEmittedCount > 0 && Number.isFinite(stat.jitterBufferDelay)) {
+          // Average time video frames spend in the receive jitter buffer,
+          // not the full end-to-end delay.
+          buffer = "Video buffer: " + Math.round(
+            (stat.jitterBufferDelay / stat.jitterBufferEmittedCount) * 1000
+          ) + " ms";
+        }
+        if (Number.isFinite(stat.framesPerSecond)) fps = Math.round(stat.framesPerSecond) + " fps";
+        break;
+      }
+      ui.connectionStats.textContent = [connectionRoute,rtt,buffer,fps].filter(Boolean).join("  ·  ");
+      ui.connectionStats.classList.remove("hidden");
+    } catch {
+      // Diagnostics are best-effort; never interrupt a working video call.
+    } finally {
+      s.statsBusy = false;
+    }
+  }
+
   async function sendSignal(callId, epoch, kind, payload) {
     if (!isActive(epoch, callId)) return;
     return request("signal", "POST", { callId, kind, payload });
@@ -170,9 +240,28 @@
     }, 22000);
     s.pc = pc;
     s.queuedIce = [];
-    for (const track of s.stream.getTracks()) pc.addTrack(track, s.stream);
+    for (const track of s.stream.getTracks()) {
+      const sender = pc.addTrack(track, s.stream);
+      // Avoid large encoded frames building a queue on slower connections.
+      if (track.kind === "video" && sender.getParameters && sender.setParameters) {
+        const parameters = sender.getParameters();
+        if (parameters.encodings?.length) {
+          parameters.encodings[0].maxBitrate = 900000;
+          parameters.encodings[0].maxFramerate = 24;
+          parameters.degradationPreference = "maintain-framerate";
+          sender.setParameters(parameters).catch(() => {});
+        }
+      }
+    }
     pc.ontrack = event => {
       if (!isActive(epoch, callId)) return;
+      // Newer browsers support a small preferred jitter buffer for live video.
+      // The browser may increase it to maintain playback on unstable networks.
+      try {
+        if (event.receiver && "jitterBufferTarget" in event.receiver) {
+          event.receiver.jitterBufferTarget = event.track.kind === "video" ? 80 : 60;
+        }
+      } catch { /* Older browsers retain their default jitter settings. */ }
       if (ui.remote.srcObject !== event.streams[0]) {
         ui.remote.srcObject = event.streams[0];
         ui.remote.classList.remove("hidden");
@@ -195,16 +284,28 @@
       if (!isActive(epoch, callId)) return;
       if (pc.connectionState === "connected" || pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
         s.connected = true;
+        s.connectionFailed = false;
         clearTimeout(s.connectionTimer);
         s.connectionTimer = null;
+        syncControls();
+        if (!s.statsTimer) {
+          s.statsTimer = setInterval(() => { void updateConnectionStats(); }, 3000);
+          void updateConnectionStats();
+        }
         announce("Connected! You're talking to a stranger.");
       } else if (pc.connectionState === "failed" || pc.iceConnectionState === "failed") {
+        s.connected = false;
+        s.connectionFailed = true;
+        syncControls();
         clearTimeout(s.connectionTimer);
         s.connectionTimer = null;
         announce(s.turnAvailable
           ? "Couldn't secure video, despite having a TURN relay. Try Next or another network."
           : "Couldn't secure video: no TURN relay configured. Try another network for now.");
       } else if (pc.connectionState === "disconnected") {
+        s.connected = false;
+        s.connectionFailed = false;
+        syncControls();
         announce("Connection interrupted. Attempting to reconnect…");
       }
     };
