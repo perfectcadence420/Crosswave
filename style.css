@@ -52,3 +52,36 @@ h1 em{font-style:normal;color:#c2ffb1}.hero-copy{color:#aab2c6;max-width:510px;f
 }
 @media(max-width:390px){.session-mode{display:none}.session-pill{font-size:0;padding:9px;gap:0}.mode-card{gap:8px}.mode-card strong{font-size:15px}.mode-card small{font-size:9px}.mode-arrow{display:none}.controlgroup{gap:5px}.action-group button{font-size:10px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+
+
+/* Straylo onboarding lives on the homepage, not in the conversation. */
+.onboarding{max-width:645px;margin:0 0 27px;padding:18px 20px 15px;background:#151e2c;border:1px solid #344356;border-radius:18px}
+.nickname-label{display:block;font-size:11px;letter-spacing:.12em;color:#aab7c5;font-weight:800;margin-bottom:9px}
+#nickname{display:block;width:100%;min-width:0;background:#0e1725;border:1px solid #3b4c60;border-radius:12px;color:#f7fafc;padding:13px 15px;font-size:16px;line-height:1.35}
+#nickname[aria-invalid="true"]{border-color:#ef9b94}
+#nickname::placeholder{color:#8291a5}
+.home-consent{display:flex;flex-wrap:wrap;gap:10px 19px;margin-top:14px}
+.home-consent .consent-check{font-size:12px;color:#d2dbe5}
+.entry-hint{margin:10px 0 0;font-size:11px;color:#a7b3c4;line-height:1.4}
+.entry-hint.ready{color:#bfffb1}
+.typing-indicator{flex:none;padding:6px 18px 8px;color:#b9eac1;font-size:12px;font-style:italic;line-height:1.3}
+.chat-page.text-mode .close-chat{display:none!important}
+/* 16px prevents iOS Safari's automatic input-focus zoom. */
+.chat-composer input{font-size:16px;min-height:46px}
+.chat-page{height:var(--chat-vh,100dvh)}
+@media(max-width:760px){
+  .onboarding{padding:15px;margin-bottom:22px}
+  .home-consent{gap:8px 12px}
+  .home-consent .consent-check{font-size:11px}
+  /* Full-bleed text conversation, including when the software keyboard opens. */
+  .chat-page.text-mode .workspace{padding:0;flex:1;min-height:0;max-width:none}
+  .chat-page.text-mode .chat-panel{border:none;border-radius:0}
+  .chat-page.text-mode .chat-messages{padding:13px 13px;min-height:0}
+  .chat-page.text-mode .chat-composer{padding:9px 10px max(9px,env(safe-area-inset-bottom));gap:8px}
+  .chat-page.text-mode .session-footer{padding:6px 10px max(7px,env(safe-area-inset-bottom))}
+  .chat-page.text-mode .connection-line{min-height:0;margin-bottom:4px}
+  .chat-page.text-mode .session-controls{gap:0}
+  .chat-page.text-mode .action-group{width:100%;grid-template-columns:minmax(95px,1.35fr) minmax(64px,1fr) minmax(49px,.62fr) minmax(52px,.7fr)}
+  .chat-page.text-mode .action-group button{min-height:38px}
+  .chat-page.text-mode .chat-panel-header{min-height:55px;padding:10px 15px}
+}

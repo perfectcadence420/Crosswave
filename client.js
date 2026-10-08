@@ -12,7 +12,8 @@
     report: el("report"), status: el("status"),
     videoMode: el("videoMode"), textMode: el("textMode"),
     avControls: el("avControls"), adult: el("adult"), rules: el("rules"),
-    consent: el("consent"), safety: el("safety"), safetyText: el("safetyText"),
+    nickname: el("nickname"), entryHint: el("entryHint"), typing: el("typingIndicator"),
+    chatTitle: el("chatTitle"), safety: el("safety"), safetyText: el("safetyText"),
     reportForm: el("reportForm"), reportReason: el("reportReason"),
     reportDetails: el("reportDetails"), reportSubmit: el("reportSubmit"),
     sound: el("enableSound"), connectionStats: el("connectionStats"),
@@ -29,7 +30,9 @@
     pollTimer: null, signalTimer: null, statusBusy: false, signalBusy: false,
     lastError: 0, connected: false, connectionFailed: false, reportCallId: null,
     turnAvailable: false, connectionTimer: null, statsTimer: null, statsBusy: false,
-    realtime: false, socket: null, pendingSignals: [], unread: 0, previousVideoStats: null
+    realtime: false, socket: null, pendingSignals: [], unread: 0, previousVideoStats: null,
+    nickname: "", peerNickname: "", remoteTypingTimer: null, typingTimer: null,
+    lastTypingSent: 0, typingSent: false
   };
   // A single high-quality camera target for all users. These are ideal
   // constraints and an outbound bitrate ceiling, not guaranteed stream specs.
@@ -37,6 +40,53 @@
   const VIDEO_PROFILE = Object.freeze({
     width: 1920, height: 1080, fps: 30, bitrate: 5000000
   });
+  const validNickname = name => /^[\p{L}\p{N}][\p{L}\p{N} _.'-]{1,23}$/u.test(name);
+  const getNickname = () => ui.nickname.value.trim();
+  const entryReady = () => ui.adult.checked && ui.rules.checked && validNickname(getNickname());
+  function updateEntryHint() {
+    const name=getNickname();
+    ui.entryHint.textContent = !name ? "Choose a nickname to continue."
+      : !validNickname(name) ? "Use 2–24 letters, numbers, spaces or _ . ' -"
+      : !ui.adult.checked || !ui.rules.checked ? "Confirm both conditions before chatting."
+      : "You're all set! Choose Video or Text chat.";
+    ui.entryHint.classList.toggle("ready",entryReady());
+    ui.nickname.setAttribute("aria-invalid",String(Boolean(name) && !validNickname(name)));
+  }
+  function resetRemoteTyping() {
+    clearTimeout(s.remoteTypingTimer);
+    s.remoteTypingTimer=null;
+    ui.typing.classList.add("hidden");
+  }
+  function updateRemoteName() {
+    ui.chatTitle.textContent = s.peerNickname ? "Chat with " + s.peerNickname : "Messages";
+  }
+  function applyTypingSignal(active, callId, epoch) {
+    if (!isActive(epoch,callId)) return;
+    resetRemoteTyping();
+    if(active===true) {
+      ui.typing.textContent = (s.peerNickname || "Stranger") + " is typing…";
+      ui.typing.classList.remove("hidden");
+      s.remoteTypingTimer=setTimeout(()=>{if(isActive(epoch,callId))resetRemoteTyping()},4000);
+    }
+  }
+  function sendTyping(active) {
+    if(!s.running||!s.callId)return;
+    const epoch=s.epoch,callId=s.callId,now=Date.now();
+    if(active) {
+      if(s.typingSent && now-s.lastTypingSent<2200)return;
+      s.lastTypingSent=now;
+    }else if(!s.typingSent)return;
+    s.typingSent=active;
+    void sendSignal(callId,epoch,"typing",{active}).catch(()=>{});
+  }
+  function onMessageInput() {
+    if(!s.callId||!s.running)return;
+    clearTimeout(s.typingTimer);
+    if(ui.message.value.trim()) {
+      sendTyping(true);
+      s.typingTimer=setTimeout(()=>sendTyping(false),2700);
+    }else sendTyping(false);
+  }
   const STEP_MS = 1400;
   const SIGNAL_MS = 700;
   const isActive = (epoch, callId) => s.running && s.epoch === epoch && s.callId === callId;
@@ -86,13 +136,13 @@
     } finally { clearTimeout(timeout); }
   }
   function syncControls() {
-    const eligible = ui.adult.checked && ui.rules.checked;
+    const eligible = entryReady();
     ui.start.disabled = !eligible || s.running || s.busy || s.stopPending;
     ui.start.textContent = s.busy ? "Connecting…"
       : s.running ? (s.callId
         ? (s.mode === "text" || s.connected ? "✓ Connected" : s.connectionFailed ? "Connection failed" : "Connecting…")
         : "Searching…")
-      : eligible ? "Start " + s.mode + " chat" : "Agree to start";
+      : eligible ? "Start " + s.mode + " chat" : "Complete setup";
     ui.stop.disabled = !s.running && !s.busy;
     ui.skip.disabled = !s.running || s.busy;
     ui.videoMode.disabled = s.running || s.busy;
@@ -100,9 +150,7 @@
     ui.message.disabled = !s.running || !s.callId;
     ui.send.disabled = ui.message.disabled;
     ui.report.disabled = !s.running || !s.callId;
-    ui.consent.textContent = eligible
-      ? s.running ? "You're in a session. Click Stop before changing modes." : "Ready when you are."
-      : "Accept both conditions to enable matching.";
+    updateEntryHint();
     ui.videoMode.classList.toggle("mode-selected", s.mode === "video");
     ui.textMode.classList.toggle("mode-selected", s.mode === "text");
     ui.videoMode.setAttribute("aria-pressed", String(s.mode === "video"));
@@ -149,6 +197,13 @@
   }
   function openMode(next, pushHistory = true) {
     if (s.running || s.busy) return;
+    if (!entryReady()) {
+      setChatPageVisible(false);
+      updateEntryHint();
+      ui.nickname.focus();
+      return;
+    }
+    s.nickname=getNickname();
     switchMode(next);
     setChatPageVisible(true);
     if (pushHistory) window.history.pushState({mode:next},"", "/chat/" + next + window.location.search);
@@ -162,8 +217,11 @@
   async function restoreRoute() {
     const mode = /^\/chat\/(video|text)\/?$/.exec(window.location.pathname)?.[1];
     if (s.running || s.busy) await stop();
-    if (mode) openMode(mode,false);
-    else setChatPageVisible(false);
+    if (mode && entryReady()) openMode(mode,false);
+    else {
+      setChatPageVisible(false);
+      if(mode) window.history.replaceState({mode:null},"","/" + window.location.search);
+    }
   }
   function updateTrackButtons() {
     const vt = s.stream?.getVideoTracks()[0];
@@ -241,6 +299,13 @@
     s.callId = null;
     s.peerId = null;
     s.unread = 0;
+    s.peerNickname="";
+    clearTimeout(s.typingTimer);
+    s.typingTimer=null;
+    s.typingSent=false;
+    s.lastTypingSent=0;
+    resetRemoteTyping();
+    updateRemoteName();
     ui.unreadCount.classList.add("hidden");
     resetMessages();
     showRemote("Searching for someone…");
@@ -412,9 +477,28 @@
   }
   async function handleSignal(message, epoch, callId) {
     if (!isActive(epoch, callId)) return;
-    if (message.kind === "text") {
+    // Legacy HTTP signal storage accepts only offer/answer/ice/text.
+    // New metadata events are wrapped in a text envelope by our API.
+    const kind = message.kind==="text" &&
+      ["profile","typing"].includes(message.payload?._strayloEvent)
+        ? message.payload._strayloEvent : message.kind;
+    if(kind==="profile") {
+      const name=message.payload?.nickname;
+      if(typeof name==="string" && validNickname(name) && name.length<=24){
+        s.peerNickname=name;
+        updateRemoteName();
+        if(!ui.typing.classList.contains("hidden"))ui.typing.textContent=name+" is typing…";
+      }
+      return;
+    }
+    if(kind==="typing") {
+      if(typeof message.payload?.active==="boolean")applyTypingSignal(message.payload.active,callId,epoch);
+      return;
+    }
+    if (kind === "text") {
+      resetRemoteTyping();
       if (typeof message.payload?.text === "string")
-        appendMessage(message.payload.text, "remote-text");
+        appendMessage((s.peerNickname ? s.peerNickname + ": " : "") + message.payload.text, "remote-text");
       return;
     }
     const pc = s.pc;
@@ -468,6 +552,8 @@
       : "Connected! Say hello.");
     ui.messages.replaceChildren();
     appendMessage("You're connected! Say hello 👋", "system");
+    // Exchange session-only nicknames, never permanent identity or public profiles.
+    void sendSignal(match.callId,epoch,"profile",{nickname:s.nickname}).catch(()=>{});
     if (s.mode === "text") {
       announce("Connected! Say hello.");
       syncControls();
@@ -576,7 +662,8 @@
   }
 
   async function start() {
-    if (s.running || s.busy || s.stopPending || !ui.adult.checked || !ui.rules.checked) return;
+    if (s.running || s.busy || s.stopPending || !entryReady()) return;
+    s.nickname=getNickname();
     const epoch = ++s.epoch;
     s.busy = true; syncControls();
     try {
@@ -711,6 +798,8 @@
     try {
       await sendSignal(callId, epoch, "text", { text });
       if (isActive(epoch, callId)) {
+        sendTyping(false);
+        clearTimeout(s.typingTimer);
         appendMessage(text, "self-text");
         ui.message.value = "";
       }
@@ -723,6 +812,9 @@
   ui.textMode.addEventListener("click", () => openMode("text"));
   ui.adult.addEventListener("change", syncControls);
   ui.rules.addEventListener("change", syncControls);
+  ui.nickname.addEventListener("input",syncControls);
+  ui.message.addEventListener("input",onMessageInput);
+  ui.message.addEventListener("blur",()=>{clearTimeout(s.typingTimer);sendTyping(false)});
   ui.start.addEventListener("click", () => void start());
   ui.stop.addEventListener("click", () => void stop());
   ui.skip.addEventListener("click", () => void skip());
@@ -737,6 +829,16 @@
   ui.closeChat.addEventListener("click", closeChatDrawer);
   ui.chatBackdrop.addEventListener("click", closeChatDrawer);
   window.addEventListener("popstate", () => void restoreRoute());
+  // Use the visual viewport when the mobile keyboard opens, so the message
+  // composer stays above it without zooming or requiring manual pinch-out.
+  function resizeChatViewport() {
+    const height=window.visualViewport?.height;
+    document.documentElement.style.setProperty("--chat-vh",
+      Number.isFinite(height) && height>200 ? Math.round(height)+"px" : "100dvh");
+  }
+  window.visualViewport?.addEventListener("resize",resizeChatViewport);
+  window.addEventListener("resize",resizeChatViewport);
+  resizeChatViewport();
   ui.messageForm.addEventListener("submit", event => void sendText(event));
   ui.sound.addEventListener("click", () => ui.remote.play().then(() => ui.sound.classList.add("hidden")).catch(() => announce("Enable sound in your browser to hear your match.")));
   window.addEventListener("pagehide", () => {
@@ -750,6 +852,9 @@
   resetMessages();
   syncControls();
   const initialMode = /^\/chat\/(video|text)\/?$/.exec(window.location.pathname)?.[1];
-  if (initialMode) openMode(initialMode,false);
-  else setChatPageVisible(false);
+  if (initialMode && entryReady()) openMode(initialMode,false);
+  else {
+    setChatPageVisible(false);
+    if (initialMode) window.history.replaceState({mode:null},"","/" + window.location.search);
+  }
 })();

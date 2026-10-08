@@ -1,5 +1,16 @@
 # Straylo — random video and text chat
 
+## Session onboarding and typing indicators (October 2026)
+
+- Before opening either chat mode, visitors enter a nickname (2–24 characters, letters/numbers and limited punctuation) and confirm 18+ and community rules on the **home screen**. These controls are not repeated in the live chat view.
+- Nicknames are session-only and visible to the current stranger; no registered accounts are implied.
+- Text and video-plus-text conversations show a remote nickname in the Messages heading, label received messages with it and show an ephemeral **nickname is typing…** indicator.
+- Typing notifications are debounced, expire after 4 seconds, and clear after a message arrives or the call ends.
+- WebSocket signaling handles ephemeral `profile`/`typing` events directly. Legacy HTTP signaling wraps these events into the existing `text` kind with an internal subtype, preserving the current Neon database kind constraint and interoperability with older browsers.
+- Mobile text chat fills the viewport with compact controls. Inputs use at least 16 px font to avoid iOS Safari focus zoom, and visualViewport resize keeps the composer in view above the virtual keyboard.
+- Text-only chat hides the unnecessary close (X) button; the video-chat message drawer retains its close button.
+- Direct links to `/chat/video` or `/chat/text` without completed onboarding safely show the home screen rather than opening an unconsented session.
+
 Straylo is the public-facing brand for this repository. The original Crosswave infrastructure identifiers, Neon schema, guest cookie, Vercel project, and Cloudflare Worker name are intentionally retained for compatibility while the domain transition is pending.
 
 ## New mobile-first experience

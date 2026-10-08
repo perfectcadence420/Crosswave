@@ -158,10 +158,14 @@ export class Matchmaker extends DurableObject {
   }
   signal(ws,msg) {
     const s=this.sessions.get(ws);
-    if(!s?.callId || s.callId!==msg.callId || !["offer","answer","ice","text"].includes(msg.kind) ||
+    if(!s?.callId || s.callId!==msg.callId || !["offer","answer","ice","text","profile","typing"].includes(msg.kind) ||
        !msg.payload || typeof msg.payload!=="object" || Array.isArray(msg.payload)) return;
     if(msg.kind==="text" && (typeof msg.payload.text!=="string" ||
         msg.payload.text.length<1 || msg.payload.text.length>1000)) return;
+    if(msg.kind==="profile" && (typeof msg.payload.nickname!=="string" ||
+      !/^[\p{L}\p{N}][\p{L}\p{N} _.'-]{1,23}$/u.test(msg.payload.nickname))) return;
+    if(msg.kind==="typing" && (typeof msg.payload.active!=="boolean" ||
+      Object.keys(msg.payload).length!==1)) return;
     const peer=this.findGuest(s.peerId);
     if(!peer||peer[1].callId!==s.callId||peer[1].peerId!==s.guestId) return;
     this.send(peer[0],{type:"signal",callId:s.callId,kind:msg.kind,payload:msg.payload});
