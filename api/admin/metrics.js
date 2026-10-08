@@ -1,6 +1,6 @@
 import { api,db,ApiError } from "../_lib/core.js";
 import { requireAdmin } from "../_lib/admin-auth.js";
-const WINDOWS={"24h":86400000,"7d":604800000,"30d":2592000000};
+const WINDOWS={"24h":true,"7d":true,"30d":true};
 async function realtimeSummary(){
  const endpoint=process.env.REALTIME_WEBSOCKET_URL,secret=process.env.REALTIME_SHARED_SECRET;
  if(!endpoint||!secret||secret.length<32)return {available:false,reason:"Not configured"};
@@ -20,7 +20,10 @@ export default api(["GET"],async(req,res)=>{
  requireAdmin(req);
  const range=String(req.query?.range||"7d");
  if(!Object.hasOwn(WINDOWS,range))throw new ApiError(400,"Invalid range");
- const since=new Date(Date.now()-WINDOWS[range]).toISOString();
+ const date=new Date();
+ if(range==="24h"){date.setUTCMinutes(0,0,0);date.setUTCHours(date.getUTCHours()-23);}
+ else{date.setUTCHours(0,0,0,0);date.setUTCDate(date.getUTCDate()-(range==="7d"?6:29));}
+ const since=date.toISOString();
  const unit=range==="24h"?"hour":"day",sql=db();
  const [summary,matches,guests,reports,reasons,live]=await Promise.all([
   sql`SELECT

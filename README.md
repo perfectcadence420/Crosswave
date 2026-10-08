@@ -1,5 +1,15 @@
 # Straylo — random video and text chat
 
+## Straylo private admin dashboard (October 2026)
+
+Open `https://straylo.com/admin` to sign in with the owner password. The admin interface is independent of guest chat routes and cannot fetch metrics before a secure 12-hour signed, HTTP-only cookie is issued. Admin passwords and the HMAC session key live **only in Vercel production environment variables** `STRAYLO_ADMIN_PASSWORD` and `STRAYLO_ADMIN_SESSION_SECRET`, each with strong random values. Do not commit or expose those values in client bundles. Logout destroys the client cookie. Change the password by rotating the Vercel env values and redeploying; rotate the session secret to invalidate previously issued cookies.
+
+`GET /api/admin/metrics?range=24h|7d|30d` returns read-only aggregate counts from Neon: guest sessions started, matches formed, completed calls, average completed-call duration, completed calls lasting 30+ seconds, report counts and reasons, and UTC hourly/daily trend buckets. **Matches formed are not verified successful WebRTC connections**, and a visitor can participate in several matches. No message contents, IP addresses, tokens, session nicknames, or identifying report details are exposed. Guest session counts measure sessions created on starting chat, not homepage visits or ad click conversions.
+
+Live socket counts are read directly from Cloudflare's Durable Object via `/internal/metrics` (available only with the `REALTIME_SHARED_SECRET` server-to-server header). The endpoint returns connected WebSockets, queued video/text participants, and matched calls; it is not a public API. On errors or if the updated Worker hasn't deployed, the admin dashboard explicitly shows **Worker stats unavailable** instead of fabricating live counts. Historical Neon aggregates still work.
+
+This dashboard does not contain provider billing usage, which is only available on the Cloudflare, Neon and Vercel usage pages linked in the interface. It refreshes every 30 seconds while open; metric windows use UTC calendar days and 24 UTC hours.
+
 ## iPhone Safari keyboard layout fix (October 2026)
 
 Lock the active chat view to the visual viewport rather than placing it in a body with a taller fixed minimum height. When iOS opens the keyboard, the visual viewport's height **and vertical offset** can change. Straylo updates the fixed chat shell from both its resize and scroll events and prevents root-document scrolling; the messages list stays the only scrolling area. During text-chat input with the keyboard open, the nonessential session footer hides, keeping the message composer and Send button directly above the keyboard. Keyboard detection tracks viewport height relative to the unoccluded baseline and resets on rotation. Returning home removes the scroll lock. Text fields retain 16px fonts to avoid Safari focus zoom.

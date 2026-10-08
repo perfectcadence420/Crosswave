@@ -99,7 +99,10 @@ async function loadData(){
  if(!loggedIn||pending)return;
  pending=true;$("refreshBtn").disabled=true;
  $("dashError").classList.add("hidden");
- try{render(await api("/api/admin/metrics?range="+encodeURIComponent(selectedRange)))}
+ try{
+  const result=await api("/api/admin/metrics?range="+encodeURIComponent(selectedRange));
+  if(loggedIn)render(result);
+ }
  catch(err){
   if(err.status===401){showLogin("Your admin session expired. Please sign in again.");return}
   $("dashError").textContent="Couldn't update the dashboard: "+err.message;
