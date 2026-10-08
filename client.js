@@ -560,6 +560,13 @@
   }
   async function skip() {
     if (!s.running || s.busy) return;
+    if (s.realtime) {
+      ++s.epoch;
+      clearPeer();
+      announce("Finding your next stranger…");
+      s.socket?.send(JSON.stringify({ type: "next", mode: s.mode }));
+      return;
+    }
     const epoch = ++s.epoch;
     s.busy = true;
     clearPeer();
