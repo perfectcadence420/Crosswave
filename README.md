@@ -1,33 +1,45 @@
-# Crosswave backend v1
+# Crosswave — first live two-person video chat
 
-A small, private-by-default anonymous matchmaking API for the existing static landing page.
-The landing page is intentionally unchanged until the next UI/WebRTC milestone.
+This repository includes the Crosswave static landing page, its browser WebRTC client, and Vercel serverless APIs backed by Neon Postgres.
 
-## Setup
-1. Install dependencies with `npm install`.
-2. Apply `migrations/001_crosswave.sql` to the target Neon Postgres database.
-3. Set `DATABASE_URL` in **server-side** Vercel environment variables (pooled Neon URL).
-4. Deploy and test `GET /api/health` (must return `"database":"ok"`).
+## Architecture
+- Browser: camera/microphone via getUserMedia; peer-to-peer video/audio via WebRTC, plus text mode.
+- Vercel: anonymous guest session, matchmaking, status polling, WebRTC signaling, leave, abuse report/block APIs.
+- Neon: guests, matching queue, calls, signaling messages, reports, blocks and moderation actions.
+- STUN servers are public; optional TURN relays require server-side TURN_URLS, TURN_USERNAME and TURN_CREDENTIAL.
+- Video and audio streams go peer-to-peer when reachable or through a TURN relay when one is configured. They are **not** stored in Neon.
 
-Never publish `DATABASE_URL`, check it into git, or prefix it with `NEXT_PUBLIC_`.
+## How to test with two people
+1. Use the same **production domain** or same preview deployment URL on both devices. Different hosts do not share guest cookies or signaling contexts.
+2. Each tester accepts the 18+ and rules checkboxes.
+3. Select Video chat, allow camera and microphone and click **Start**.
+4. First user sees "Looking for a stranger…"; once the second joins, both show "Match found".
+5. When ICE connects, each sees the other's camera and hears audio. Use headphones to avoid feedback.
+6. Test **Next** (disconnect and rematch), **Stop** (leave queue), and **Report** (block and file report).
 
-## API
-- `POST /api/guest` body `{"ageConfirmed":true,"rulesAccepted":true}` starts an anonymous 24-hour guest session using a HttpOnly SameSite cookie scoped to `/api`.
-- `POST /api/match` body `{"mode":"video"}` (or `"text"`) joins the queue or connects two guests.
-- `GET /api/status` checks the waiting state, heartbeats, and active call.
-- `POST /api/signal` body `{"callId":"uuid","kind":"offer|answer|ice|text","payload":{...}}` sends a WebRTC signaling message or text message to the peer.
-- `GET /api/signal?callId=uuid&after=0` polls incoming peer messages.
-- `POST /api/leave` exits the queue or current call.
-- `POST /api/report` body `{"callId":"uuid","reason":"nudity|harassment|hate|spam|underage|other","details":"..."}` records a report and blocks rematching.
+To test in two windows on the same device, use **normal and incognito** windows: two ordinary tabs share the same guest cookie and are treated as one user. Webcam sharing can be limited by browsers; use separate devices for a real AV test.
 
-All APIs except `health` and `guest` require the guest session cookie. Cross-origin browser writes are rejected.
-The browser never sees any database credential. Only participants can exchange/read their call signals.
+### Setup
+1. Install deps: npm install
+2. Apply migrations/001_crosswave.sql once in Neon for each target branch.
+3. Configure a server-side **DATABASE_URL** using the matching Neon branch connection string. Never publish or commit it or add NEXT_PUBLIC_.
+4. Deploy to Vercel. The health endpoint is GET /api/health. Video clients retrieve optional TURN configuration from GET /api/ice.
 
-## Not ready for a public launch
-- Matchmaking uses one short global advisory lock; redesign under real load.
-- Polling is a v1 signaling transport; use managed WebSocket or real-time signaling for scale.
-- Provision TURN/STUN credentials and implement WebRTC client for actual audio/video.
-- Add IP/device abuse defenses, bot controls, automated/manual moderation, admin workflows, and proper age assurance.
-- Run a scheduled retention job for short-lived signaling records, waiting queue entries and expired sessions.
-- Add end-to-end integration tests before public release.
-- Guests are not verified accounts; guest bans can be evaded via new sessions. Do not describe guest-only banning as robust enforcement.
+### APIs
+- POST /api/guest: \`{"ageConfirmed":true,"rulesAccepted":true}\`
+- POST /api/match: \`{"mode":"video"}\` or \`{"mode":"text"}\`
+- GET /api/status
+- POST /api/signal: \`{"callId":"uuid","kind":"offer|answer|ice|text","payload":{...}}\`
+- GET /api/signal?callId=<uuid>&after=0
+- POST /api/leave
+- POST /api/report: \`{"callId":"uuid","reason":"nudity|harassment|hate|spam|underage|other","details":"..."}\`
+
+Session cookie is HttpOnly, SameSite=Strict. Only call participants can fetch/send that call's signals.
+
+## Known limits before a public launch
+- STUN-only mode can fail on CGNAT, symmetric NAT, or restrictive corporate/mobile networks. Add short-lived TURN credentials from a provider and test different networks.
+- Browser polling instead of a persistent signaling WebSocket increases database reads/writes and connection setup latency.
+- Implement automated moderation, real age assurance, bot controls, IP/device-based rate limits, admin review, appeals, and a content-retention policy.
+- Add scheduled deletion of expired sessions and old signaling payloads (signals currently persist). Do not market this as privacy-safe until retention/abuse protections are in place.
+- Anonymous bans are easily evaded by clearing cookies.
+- This is a limited two-person prototype; verify on real devices before wider release.
