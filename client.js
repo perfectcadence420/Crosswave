@@ -390,8 +390,13 @@
       return;
     }
     showRemote("Connecting securely…");
-    try { await startPeer(match.callId, epoch, match.initiator); }
-    catch (error) { if (isActive(epoch, match.callId)) announce("Video setup failed: " + error.message); }
+    try {
+      await startPeer(match.callId, epoch, match.initiator);
+      if (isActive(epoch, match.callId)) {
+        const pending=s.pendingSignals.splice(0);
+        for(const msg of pending) await handleSignal(msg,epoch,match.callId);
+      }
+    } catch (error) { if (isActive(epoch, match.callId)) announce("Video setup failed: " + error.message); }
   }
   async function joinQueue(epoch) {
     if (!s.running || s.epoch !== epoch) return;
@@ -506,6 +511,17 @@
       s.running = true;
       s.busy = false;
       syncControls();
+      let config;
+      try {config=await request("realtime-config")}catch{}
+      if(s.epoch!==epoch || !s.running)return;
+      if(config?.enabled && config.url){
+        try{
+          const {ticket}=await request("socket-ticket","POST");
+          if(s.epoch!==epoch||!s.running)return;
+          await connectRealtime(config.url,ticket,epoch);
+          return;
+        }catch{closeRealtime();announce("Realtime unavailable; using original matching…");}
+      }
       startPolling();
       await joinQueue(epoch);
     } catch (error) {
