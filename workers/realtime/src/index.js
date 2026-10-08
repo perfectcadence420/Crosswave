@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
+const REMATCH_DELAY_MS = 5000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const output = (data, code = 200) => new Response(JSON.stringify(data), {
   status:code, headers:{"Content-Type":"application/json","Cache-Control":"no-store"}
@@ -86,6 +87,35 @@ export class Matchmaker extends DurableObject {
     this.queue=this.queue.catch(()=>{}).then(task);
     this.ctx.waitUntil(this.queue);
   }
+  async alarm() {
+    // Durable Object alarms continue the search after the 5-second exclusion
+    // expires, even when neither client sends another WebSocket message.
+    this.sequence(async()=>{
+      for(const [ws,s] of [...this.sessions]) {
+        if(s.state==="waiting" && s.mode && ws.readyState===WebSocket.OPEN)
+          await this.join(ws,s.mode);
+      }
+    });
+    await this.queue;
+  }
+  async scheduleRematch() {
+    // Only arm the alarm if two eligible waiting guests are temporarily
+    // excluded because they recently spoke to one another.
+    const now=Date.now();
+    let earliest=Infinity;
+    for(const [ws,s] of this.sessions) {
+      if(s.state!=="waiting" || !s.lastPeerId || ws.readyState!==WebSocket.OPEN) continue;
+      const partner=this.findGuest(s.lastPeerId);
+      if(!partner || partner[0].readyState!==WebSocket.OPEN ||
+         partner[1].state!=="waiting" || partner[1].mode!==s.mode) continue;
+      const availableAt=Math.max(s.lastPeerAt||0,partner[1].lastPeerAt||0)+REMATCH_DELAY_MS;
+      if(availableAt>now) earliest=Math.min(earliest,availableAt);
+    }
+    if(!Number.isFinite(earliest)) return;
+    const scheduled=await this.ctx.storage.getAlarm();
+    if(scheduled===null || scheduled<=now || scheduled>earliest)
+      await this.ctx.storage.setAlarm(earliest);
+  }
   webSocketMessage(ws,raw) {
     this.sequence(async()=>{
       const s=this.sessions.get(ws);
@@ -128,12 +158,20 @@ export class Matchmaker extends DurableObject {
     const s=this.sessions.get(ws);
     if(!s||!["video","text"].includes(mode)) {this.send(ws,{type:"error",message:"Invalid mode"});return;}
     if(s.callId) {this.send(ws,{type:"error",message:"Leave current call first"});return;}
-    s.mode=mode;s.state="waiting";s.joinedAt=Date.now();this.save(ws,s);
+    if(s.state!=="waiting") s.joinedAt=Date.now();
+    s.mode=mode;s.state="waiting";this.save(ws,s);
+    const now=Date.now();
     const candidates=[...this.sessions.entries()].filter(([w,p])=>w!==ws &&
       p.mode===mode && p.state==="waiting" && w.readyState===WebSocket.OPEN &&
-      !(s.lastPeerId===p.guestId && Date.now()-s.lastPeerAt<120000) &&
-      !(p.lastPeerId===s.guestId && Date.now()-p.lastPeerAt<120000))
-      .sort((a,b)=>a[1].joinedAt-b[1].joinedAt);
+      !(s.lastPeerId===p.guestId && now-s.lastPeerAt<REMATCH_DELAY_MS) &&
+      !(p.lastPeerId===s.guestId && now-p.lastPeerAt<REMATCH_DELAY_MS))
+      .sort((a,b)=>{
+        // If a fresh stranger is also waiting, pair with them before
+        // falling back to the person this guest most recently skipped.
+        const repeatA=Number(s.lastPeerId===a[1].guestId || a[1].lastPeerId===s.guestId);
+        const repeatB=Number(s.lastPeerId===b[1].guestId || b[1].lastPeerId===s.guestId);
+        return repeatA-repeatB || a[1].joinedAt-b[1].joinedAt;
+      });
     for(const [w,p] of candidates.slice(0,16)) {
       if(ws.readyState!==WebSocket.OPEN || w.readyState!==WebSocket.OPEN) break;
       s.state="matching";p.state="matching";this.save(ws,s);this.save(w,p);
@@ -155,6 +193,7 @@ export class Matchmaker extends DurableObject {
       return;
     }
     s.state="waiting";this.save(ws,s);this.send(ws,{type:"waiting",mode});
+    await this.scheduleRematch();
   }
   signal(ws,msg) {
     const s=this.sessions.get(ws);
