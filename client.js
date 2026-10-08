@@ -477,7 +477,12 @@
   }
   async function handleSignal(message, epoch, callId) {
     if (!isActive(epoch, callId)) return;
-    if(message.kind==="profile") {
+    // Legacy HTTP signal storage accepts only offer/answer/ice/text.
+    // New metadata events are wrapped in a text envelope by our API.
+    const kind = message.kind==="text" &&
+      ["profile","typing"].includes(message.payload?._strayloEvent)
+        ? message.payload._strayloEvent : message.kind;
+    if(kind==="profile") {
       const name=message.payload?.nickname;
       if(typeof name==="string" && validNickname(name) && name.length<=24){
         s.peerNickname=name;
@@ -486,11 +491,11 @@
       }
       return;
     }
-    if(message.kind==="typing") {
+    if(kind==="typing") {
       if(typeof message.payload?.active==="boolean")applyTypingSignal(message.payload.active,callId,epoch);
       return;
     }
-    if (message.kind === "text") {
+    if (kind === "text") {
       resetRemoteTyping();
       if (typeof message.payload?.text === "string")
         appendMessage((s.peerNickname ? s.peerNickname + ": " : "") + message.payload.text, "remote-text");
@@ -824,6 +829,16 @@
   ui.closeChat.addEventListener("click", closeChatDrawer);
   ui.chatBackdrop.addEventListener("click", closeChatDrawer);
   window.addEventListener("popstate", () => void restoreRoute());
+  // Use the visual viewport when the mobile keyboard opens, so the message
+  // composer stays above it without zooming or requiring manual pinch-out.
+  function resizeChatViewport() {
+    const height=window.visualViewport?.height;
+    document.documentElement.style.setProperty("--chat-vh",
+      Number.isFinite(height) && height>200 ? Math.round(height)+"px" : "100dvh");
+  }
+  window.visualViewport?.addEventListener("resize",resizeChatViewport);
+  window.addEventListener("resize",resizeChatViewport);
+  resizeChatViewport();
   ui.messageForm.addEventListener("submit", event => void sendText(event));
   ui.sound.addEventListener("click", () => ui.remote.play().then(() => ui.sound.classList.add("hidden")).catch(() => announce("Enable sound in your browser to hear your match.")));
   window.addEventListener("pagehide", () => {
