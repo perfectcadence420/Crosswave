@@ -18,7 +18,7 @@ Straylo is the public-facing brand for this repository. The original Crosswave i
 ---
 
 
-This repository includes the Crosswave static landing page, its browser WebRTC client, and Vercel serverless APIs backed by Neon Postgres.
+This repository contains Straylo's immersive browser client, WebRTC media transport, and Vercel serverless APIs backed by the existing Neon database.
 
 ## Architecture
 - Browser: camera/microphone via getUserMedia; peer-to-peer video/audio via WebRTC, plus text mode.
@@ -28,11 +28,11 @@ This repository includes the Crosswave static landing page, its browser WebRTC c
 - Video and audio streams go peer-to-peer when reachable or through a TURN relay when one is configured. They are **not** stored in Neon.
 
 ## How to test with two people
-1. Use the same **production domain** or same preview deployment URL on both devices. Different hosts do not share guest cookies or signaling contexts.
+1. Use the same **production domain** or preview deployment hostname on both devices, and choose the same mode from the home screen.
 2. Each tester accepts the 18+ and rules checkboxes.
-3. Select Video chat, allow camera and microphone and click **Start**.
+3. Choose Video or Text to open fullscreen chat. Confirm consent and click **Start**; for video, grant camera/microphone permissions.
 4. First user sees "Looking for a stranger…"; once the second joins, both show "Match found".
-5. When ICE connects, each sees the other's camera and hears audio. Use headphones to avoid feedback.
+5. During video, each sees the other's camera, hears audio, and can send text messages via the side chat (or mobile Messages drawer). Use headphones to avoid feedback.
 6. Test **Next** (disconnect and rematch), **Stop** (leave queue), and **Report** (block and file report).
 
 To test in two windows on the same device, use **normal and incognito** windows: two ordinary tabs share the same guest cookie and are treated as one user. Webcam sharing can be limited by browsers; use separate devices for a real AV test.
