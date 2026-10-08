@@ -27,6 +27,18 @@ export default {
   async fetch(request,env) {
     const url=new URL(request.url);
     if (url.pathname==="/health" && request.method==="GET") return output({ok:true,service:"crosswave-realtime",rematchDelayMs:REMATCH_DELAY_MS});
+    if (url.pathname==="/internal/metrics" && request.method==="GET") {
+      const secret=env.REALTIME_SHARED_SECRET;
+      const supplied=request.headers.get("X-Crosswave-Realtime-Key")||"";
+      if(!secret || secret.length<32 || supplied.length!==secret.length)
+        return output({error:"Unauthorized"},401);
+      const expected=new TextEncoder().encode(secret),given=new TextEncoder().encode(supplied);
+      let difference=0;
+      for(let i=0;i<expected.length;i++)difference|=expected[i]^given[i];
+      if(difference!==0)return output({error:"Unauthorized"},401);
+      const id=env.MATCHMAKER.idFromName("crosswave-global-beta");
+      return env.MATCHMAKER.get(id).fetch("https://crosswave.internal/internal/metrics");
+    }
     if (url.pathname!=="/connect") return output({error:"Not found"},404);
     if (request.method!=="GET" || request.headers.get("Upgrade")?.toLowerCase()!=="websocket")
       return output({error:"WebSocket required"},426);
@@ -64,6 +76,27 @@ export class Matchmaker extends DurableObject {
     return null;
   }
   async fetch(req) {
+    if(new URL(req.url).pathname==="/internal/metrics" && req.method==="GET") {
+      const stats={service:"crosswave-matchmaker",connected:0,waiting:0,
+        waitingText:0,waitingVideo:0,activeCalls:0,activeText:0,activeVideo:0};
+      for(const [ws,s] of this.sessions) {
+        if(ws.readyState!==WebSocket.OPEN)continue;
+        stats.connected++;
+        if(s.state==="waiting") {
+          stats.waiting++;
+          if(s.mode==="text")stats.waitingText++;
+          else if(s.mode==="video")stats.waitingVideo++;
+        }
+        if(s.state==="matched") {
+          if(s.mode==="text")stats.activeText++;
+          else if(s.mode==="video")stats.activeVideo++;
+        }
+      }
+      stats.activeText=Math.floor(stats.activeText/2);
+      stats.activeVideo=Math.floor(stats.activeVideo/2);
+      stats.activeCalls=stats.activeText+stats.activeVideo;
+      return output(stats);
+    }
     const guestId=req.headers.get("X-Crosswave-Guest");
     if(req.headers.get("Upgrade")?.toLowerCase()!=="websocket"||!UUID.test(guestId||""))
       return output({error:"Unauthorized"},401);
