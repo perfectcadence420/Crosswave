@@ -22,17 +22,23 @@ export default api(["GET","POST"], async (req, res) => {
   const bytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
   if (bytes > 65536) throw new ApiError(413, "Signal too large");
   if (kind === "text" &&
-      (typeof payload.text !== "string" || payload.text.length < 1 || payload.text.length > 1000))
+      (typeof payload.text !== "string" || payload.text.length < 1 || payload.text.length > 1000 || Object.keys(payload).length !== 1))
     throw new ApiError(400, "Text message must be 1-1000 characters");
   if (kind === "profile" && (typeof payload.nickname !== "string" ||
       !/^[\p{L}\p{N}][\p{L}\p{N} _.'-]{1,23}$/u.test(payload.nickname)))
     throw new ApiError(400, "Invalid nickname");
   if (kind === "typing" && (typeof payload.active !== "boolean" || Object.keys(payload).length !== 1))
     throw new ApiError(400, "Invalid typing indicator");
+  // Keep the existing database constraint (offer, answer, ice, text)
+  // intact: small transient metadata events ride the text signal envelope.
+  // Older clients ignore them because payload.text is missing.
+  const storedKind = (kind === "profile" || kind === "typing") ? "text" : kind;
+  const storedPayload = storedKind === "text" && kind !== "text"
+    ? { ...payload, _strayloEvent: kind } : payload;
   const rows = await sql`INSERT INTO crosswave.signals(call_id,sender_id,receiver_id,kind,payload)
     SELECT c.id,${guestId}::uuid,
       CASE WHEN c.guest_a=${guestId}::uuid THEN c.guest_b ELSE c.guest_a END,
-      ${kind},${JSON.stringify(payload)}::jsonb
+      ${storedKind},${JSON.stringify(storedPayload)}::jsonb
     FROM crosswave.calls c
     WHERE c.id=${callId}::uuid AND c.ended_at IS NULL
       AND (c.guest_a=${guestId}::uuid OR c.guest_b=${guestId}::uuid)
