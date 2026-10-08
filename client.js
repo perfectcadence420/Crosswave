@@ -443,6 +443,49 @@
     s.pollTimer = null;
     s.signalTimer = null;
   }
+  function closeRealtime() {
+    const socket = s.socket;
+    s.socket = null; s.realtime = false;
+    if (socket) {
+      socket.onopen = null; socket.onmessage = null; socket.onerror = null; socket.onclose = null;
+      try { socket.close(1000,"Leaving"); } catch {}
+    }
+  }
+  async function connectRealtime(url,ticket,epoch) {
+    if (typeof WebSocket === "undefined") throw new Error("WebSocket unsupported");
+    const socket = new WebSocket(url,["crosswave.v1","auth."+ticket]);
+    s.socket = socket; s.realtime = true;
+    try { await new Promise((resolve,reject)=>{
+      const timeout=setTimeout(()=>reject(new Error("Realtime timeout")),8000);
+      socket.onopen=()=>{clearTimeout(timeout);resolve()};
+      socket.onerror=()=>{clearTimeout(timeout);reject(new Error("Socket failure"))};
+      socket.onclose=()=>{clearTimeout(timeout);reject(new Error("Socket closed"))};
+    }); } catch(error) { closeRealtime(); throw error; }
+    if (!s.running || s.epoch!==epoch || s.socket!==socket) {closeRealtime();return;}
+    socket.onerror=()=>{if(s.socket===socket)announce("Realtime network trouble…");};
+    socket.onclose=()=>{
+      if(s.socket!==socket||!s.running)return;
+      closeRealtime(); s.epoch++; s.running=false;stopPolling();
+      clearPeer();releaseMedia();syncControls();
+      announce("Realtime disconnected. Click Start to reconnect.");
+    };
+    socket.onmessage=event=>{
+      if(s.socket!==socket||!s.running)return;
+      let message; try{message=JSON.parse(event.data)}catch{return}
+      if(!message||typeof message!=="object")return;
+      if(message.type==="waiting"){if(!s.callId){announce("Looking for a stranger…");syncControls()}}
+      else if(message.type==="matched" && typeof message.callId==="string"){
+        void setMatch({callId:message.callId,initiator:message.initiator===true},s.epoch);
+      } else if(message.type==="signal" && message.callId===s.callId) {
+        if(s.mode==="video"&&!s.pc){s.pendingSignals.push(message);return}
+        void handleSignal(message,s.epoch,s.callId).catch(()=>{});
+      } else if(message.type==="peer-left") {
+        clearPeer();announce("Stranger left. Looking for someone new…");
+      } else if(message.type==="error") announce("Realtime: "+String(message.message||"Temporary issue"));
+    };
+    await joinQueue(epoch);
+  }
+
   async function start() {
     if (s.running || s.busy || s.stopPending || !ui.adult.checked || !ui.rules.checked) return;
     const epoch = ++s.epoch;
