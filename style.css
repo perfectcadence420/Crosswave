@@ -85,3 +85,22 @@ h1 em{font-style:normal;color:#c2ffb1}.hero-copy{color:#aab2c6;max-width:510px;f
   .chat-page.text-mode .action-group button{min-height:38px}
   .chat-page.text-mode .chat-panel-header{min-height:55px;padding:10px 15px}
 }
+
+/* Keep the live chat out of normal document flow. iOS Safari may scroll the
+   layout viewport on input focus even if the chat itself has overflow:hidden. */
+html.in-session{height:100%;overflow:hidden;overscroll-behavior:none}
+body.in-session{
+  position:fixed;inset:0;width:100%;height:100%;min-height:0;
+  overflow:hidden;overscroll-behavior:none
+}
+body.in-session .chat-page{
+  position:fixed;left:0;right:0;top:var(--chat-top,0px);bottom:auto;
+  width:100%;height:var(--chat-vh,100dvh);min-height:0;
+  overflow:hidden;overscroll-behavior:none
+}
+@media(max-width:760px){
+  /* Only messages should scroll; never scroll the chat page to reach Send. */
+  .chat-page.text-mode .chat-messages{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  .chat-page.text-mode.keyboard-open .session-footer{display:none}
+  .chat-page.text-mode.keyboard-open .chat-composer{padding-bottom:9px}
+}
