@@ -1,5 +1,9 @@
 # Straylo — random video and text chat
 
+## Five-second rematching after Next (October 2026)
+
+Cloudflare's Durable Object matchmaking now temporarily excludes the previous stranger for **five seconds** after Next or a peer departure. It still prioritizes unfamiliar guests whenever available. If the previous pair are the only compatible waiting guests, a **Durable Object alarm** retries matching at the end of the cooldown, without requiring either device to click anything. Reports/blocks and bans remain enforced by the existing Neon-backed call creation endpoint, so blocked guests cannot reconnect. The legacy HTTP fallback already had no recent-peer exclusion and is unchanged.
+
 ## One-tap mode selection (October 2026)
 
 Choosing Text or Video on the homepage immediately begins matchmaking, once nickname, 18+ confirmation, and community rules are complete. There is no second required Start click. During the connection setup we show "Connecting to matchmaking…" and only show "Waiting for someone to connect…" once the waiting queue has confirmed the join. After Stop or an error, the existing Start button remains as a manual retry. This applies to both HTTP fallback and WebSocket matchmaking.
