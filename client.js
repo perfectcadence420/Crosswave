@@ -545,10 +545,13 @@
     s.running = false;
     s.busy = false;
     stopPolling();
+    const usingSocket = s.realtime;
+    closeRealtime();
     clearPeer();
     releaseMedia();
     syncControls();
     announce("Disconnected. Click Start whenever you're ready.");
+    if (usingSocket) { s.stopPending = false; syncControls(); return; }
     if (wasRunning) {
       try { await request("leave", "POST"); }
       catch { /* heartbeat expires stale sessions */ }
