@@ -1,5 +1,8 @@
-import { api,db,ApiError } from "../_lib/core.js";
-import { requireAdmin } from "../_lib/admin-auth.js";
+import { api,db,jsonBody,ApiError } from "./_lib/core.js";
+import { requireAdmin,validPassword,issueAdminCookie,clearAdminCookie } from "./_lib/admin-auth.js";
+
+// Consolidate the internal admin routes and public health endpoint into one
+// serverless function to stay within Vercel Hobby's 12-function deployment cap.
 const WINDOWS={"24h":true,"7d":true,"30d":true};
 async function realtimeSummary(){
  const endpoint=process.env.REALTIME_WEBSOCKET_URL,secret=process.env.REALTIME_SHARED_SECRET;
@@ -16,7 +19,7 @@ async function realtimeSummary(){
   return {...data,available:true};
  }catch{return {available:false,reason:"Worker stats unavailable"}}
 }
-export default api(["GET"],async(req,res)=>{
+async function adminMetrics(req,res){
  requireAdmin(req);
  const range=String(req.query?.range||"7d");
  if(!Object.hasOwn(WINDOWS,range))throw new ApiError(400,"Invalid range");
@@ -59,4 +62,34 @@ export default api(["GET"],async(req,res)=>{
   },
   buckets:{matches,guests,reports},reportReasons:reasons
  });
+}
+export default api(["GET","POST"],async(req,res)=>{
+ const action=String(req.query?.action||"");
+ if(action==="health"){
+  if(req.method!=="GET")throw new ApiError(405,"Method not allowed");
+  const rows=await db()`SELECT 1 AS ok`;
+  return res.status(200).json({service:"straylo-api",database:rows[0]?.ok===1?"ok":"error"});
+ }
+ if(action==="login"){
+  if(req.method!=="POST")throw new ApiError(405,"Method not allowed");
+  const {password}=jsonBody(req);
+  if(!validPassword(password))throw new ApiError(401,"Incorrect password");
+  issueAdminCookie(res);
+  return res.status(200).json({authenticated:true});
+ }
+ if(action==="session"){
+  if(req.method!=="GET")throw new ApiError(405,"Method not allowed");
+  try{requireAdmin(req);return res.status(200).json({authenticated:true})}
+  catch(e){if(e instanceof ApiError&&e.status===401)return res.status(200).json({authenticated:false});throw e}
+ }
+ if(action==="logout"){
+  if(req.method!=="POST")throw new ApiError(405,"Method not allowed");
+  clearAdminCookie(res);
+  return res.status(200).json({authenticated:false});
+ }
+ if(action==="metrics"){
+  if(req.method!=="GET")throw new ApiError(405,"Method not allowed");
+  return adminMetrics(req,res);
+ }
+ throw new ApiError(404,"Not found");
 });

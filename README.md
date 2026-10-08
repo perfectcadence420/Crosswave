@@ -8,6 +8,8 @@ Open `https://straylo.com/admin` to sign in with the owner password. The admin i
 
 Live socket counts are read directly from Cloudflare's Durable Object via `/internal/metrics` (available only with the `REALTIME_SHARED_SECRET` server-to-server header). The endpoint returns connected WebSockets, queued video/text participants, and matched calls; it is not a public API. On errors or if the updated Worker hasn't deployed, the admin dashboard explicitly shows **Worker stats unavailable** instead of fabricating live counts. Historical Neon aggregates still work.
 
+On Vercel Hobby, the /api/admin/* actions and existing /api/health share a single api/admin.js function, keeping the repository within the 12-function deployment limit. Do not add separate api/admin/*.js files without reviewing this limit first.
+
 This dashboard does not contain provider billing usage, which is only available on the Cloudflare, Neon and Vercel usage pages linked in the interface. It refreshes every 30 seconds while open; metric windows use UTC calendar days and 24 UTC hours.
 
 ## iPhone Safari keyboard layout fix (October 2026)

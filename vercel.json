@@ -5,6 +5,14 @@
   ],
   "rewrites": [
     {
+      "source": "/api/admin/:action",
+      "destination": "/api/admin?action=:action"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/admin?action=health"
+    },
+    {
       "source": "/admin",
       "destination": "/admin/index.html"
     },
