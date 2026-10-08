@@ -512,7 +512,7 @@
       s.busy = false;
       syncControls();
       let config;
-      try {config=await request("realtime-config")}catch{}
+      try {config=await request(window.location.search.includes("realtime=1") ? "realtime-config?canary=1" : "realtime-config")}catch{}
       if(s.epoch!==epoch || !s.running)return;
       if(config?.enabled && config.url){
         try{
@@ -520,9 +520,12 @@
           if(s.epoch!==epoch||!s.running)return;
           await connectRealtime(config.url,ticket,epoch);
           return;
-        }catch{
+        }catch(error){
           if(s.epoch!==epoch || !s.running)return;
-          closeRealtime();announce("Realtime unavailable; using original matching…");
+          closeRealtime();
+          if(window.location.search.includes("realtime=1"))
+            throw new Error("Realtime test unavailable: "+error.message+". Use the regular site for existing chat.");
+          announce("Realtime unavailable; using original matching…");
         }
       }
       startPolling();
