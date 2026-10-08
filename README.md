@@ -1,5 +1,9 @@
 # Straylo — random video and text chat
 
+## One-tap mode selection (October 2026)
+
+Choosing Text or Video on the homepage immediately begins matchmaking, once nickname, 18+ confirmation, and community rules are complete. There is no second required Start click. During the connection setup we show "Connecting to matchmaking…" and only show "Waiting for someone to connect…" once the waiting queue has confirmed the join. After Stop or an error, the existing Start button remains as a manual retry. This applies to both HTTP fallback and WebSocket matchmaking.
+
 ## Session onboarding and typing indicators (October 2026)
 
 - Before opening either chat mode, visitors enter a nickname (2–24 characters, letters/numbers and limited punctuation) and confirm 18+ and community rules on the **home screen**. These controls are not repeated in the live chat view.

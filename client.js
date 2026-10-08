@@ -100,9 +100,15 @@
     ui.remotePlaceholder.classList.remove("hidden");
     el("remoteMessage").textContent = message;
   }
-  function resetMessages() {
+  function resetMessages(message = "Not connected yet.") {
     ui.messages.replaceChildren();
-    appendMessage("Waiting for someone to connect…", "system");
+    appendMessage(message, "system");
+  }
+  function showQueued() {
+    if (!s.running || s.callId) return;
+    resetMessages("Waiting for someone to connect…");
+    announce("Looking for a stranger…");
+    showRemote("Looking for a stranger…");
   }
   function appendMessage(message, role) {
     const div = document.createElement("div");
@@ -191,8 +197,8 @@
     if (next === "text") releaseMedia();
     resetMessages();
     announce(next === "video"
-      ? "Ready to start a video call. Messages are available during the call."
-      : "Ready for a text conversation. Confirm the rules and press Start.");
+      ? "Preparing your video chat…"
+      : "Preparing your text chat…");
     syncControls();
   }
   function openMode(next, pushHistory = true) {
@@ -207,6 +213,9 @@
     switchMode(next);
     setChatPageVisible(true);
     if (pushHistory) window.history.pushState({mode:next},"", "/chat/" + next + window.location.search);
+    // A mode choice on the consented homepage is the Start action.
+    // In video mode start() requests media immediately in this click gesture.
+    void start();
   }
   async function goHome(pushHistory = true) {
     if (s.running || s.busy) await stop();
@@ -570,8 +579,8 @@
   }
   async function joinQueue(epoch) {
     if (!s.running || s.epoch !== epoch) return;
-    announce("Looking for a stranger…");
-    showRemote("Looking for a stranger…");
+    announce("Connecting to matchmaking…");
+    showRemote("Connecting to matchmaking…");
     if (s.realtime) {
       s.socket.send(JSON.stringify({type:"join",mode:s.mode}));
       return;
@@ -580,8 +589,8 @@
     if (!s.running || s.epoch !== epoch) return;
     if (result.state === "matched") await setMatch(result, epoch);
     else {
+      showQueued();
       announce("Looking for a stranger… Keep this tab open.");
-      if (s.mode === "text") resetMessages();
     }
   }
   async function checkStatus() {
@@ -648,7 +657,7 @@
       if(s.socket!==socket||!s.running)return;
       let message; try{message=JSON.parse(event.data)}catch{return}
       if(!message||typeof message!=="object")return;
-      if(message.type==="waiting"){if(!s.callId){announce("Looking for a stranger…");syncControls()}}
+      if(message.type==="waiting"){if(!s.callId){showQueued();syncControls()}}
       else if(message.type==="matched" && typeof message.callId==="string"){
         void setMatch({callId:message.callId,initiator:message.initiator===true},s.epoch);
       } else if(message.type==="signal" && message.callId===s.callId) {
@@ -666,6 +675,9 @@
     s.nickname=getNickname();
     const epoch = ++s.epoch;
     s.busy = true; syncControls();
+    resetMessages("Connecting to matchmaking…");
+    showRemote("Connecting to matchmaking…");
+    announce("Connecting to matchmaking…");
     try {
       if (s.mode === "video") await openMedia();
       if (s.epoch !== epoch) { releaseMedia(); return; }
@@ -708,6 +720,7 @@
         stopPolling();
         releaseMedia();
         syncControls();
+        resetMessages("Connection failed. Press Start to try again.");
         announce("Can't start chat: " + error.message);
       }
     } finally {
@@ -727,6 +740,7 @@
     clearPeer();
     releaseMedia();
     syncControls();
+    resetMessages("Disconnected. Press Start to find someone new.");
     announce("Disconnected. Click Start whenever you're ready.");
     if (usingSocket) { s.stopPending = false; syncControls(); return; }
     if (wasRunning) {
