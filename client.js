@@ -108,8 +108,8 @@
     ui.consent.textContent = eligible
       ? s.running ? "You're in a session. Click Stop before changing modes." : "Ready when you are."
       : "Accept both conditions to enable matching.";
-    ui.videoMode.className = s.mode === "video" ? "primary" : "secondary";
-    ui.textMode.className = s.mode === "text" ? "primary" : "secondary";
+    ui.videoMode.classList.toggle("mode-selected", s.mode === "video");
+    ui.textMode.classList.toggle("mode-selected", s.mode === "text");
     ui.videoMode.setAttribute("aria-pressed", String(s.mode === "video"));
     ui.textMode.setAttribute("aria-pressed", String(s.mode === "text"));
   }
