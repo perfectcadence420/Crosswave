@@ -26,7 +26,7 @@ async function checkTicket(ticket, secret) {
 export default {
   async fetch(request,env) {
     const url=new URL(request.url);
-    if (url.pathname==="/health" && request.method==="GET") return output({ok:true,service:"crosswave-realtime"});
+    if (url.pathname==="/health" && request.method==="GET") return output({ok:true,service:"crosswave-realtime",rematchDelayMs:REMATCH_DELAY_MS});
     if (url.pathname!=="/connect") return output({error:"Not found"},404);
     if (request.method!=="GET" || request.headers.get("Upgrade")?.toLowerCase()!=="websocket")
       return output({error:"WebSocket required"},426);
