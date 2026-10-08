@@ -22,7 +22,7 @@
     callId: null, peerId: null, pc: null, stream: null,
     cursor: "0", queuedIce: [], iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
     pollTimer: null, signalTimer: null, statusBusy: false, signalBusy: false,
-    lastError: 0, connected: false, reportCallId: null
+    lastError: 0, connected: false, reportCallId: null, turnAvailable: false, connectionTimer: null
   };
   const STEP_MS = 1400;
   const SIGNAL_MS = 700;
@@ -133,6 +133,8 @@
   }
 
   function clearPeer() {
+    clearTimeout(s.connectionTimer);
+    s.connectionTimer = null;
     if (s.pc) {
       const old = s.pc;
       s.pc = null;
@@ -161,6 +163,11 @@
   async function startPeer(callId, epoch, initiator) {
     if (!isActive(epoch, callId) || s.mode !== "video" || !s.stream) return;
     const pc = new RTCPeerConnection({ iceServers: s.iceServers });
+    s.connectionTimer = setTimeout(() => {
+      if (isActive(epoch, callId) && !s.connected) announce(s.turnAvailable
+        ? "Video is taking longer than expected. The relay is configured; try Next if it fails."
+        : "Still trying a direct connection. These networks may need a TURN relay.");
+    }, 22000);
     s.pc = pc;
     s.queuedIce = [];
     for (const track of s.stream.getTracks()) pc.addTrack(track, s.stream);
@@ -180,13 +187,23 @@
         });
       }
     };
+    pc.onicecandidateerror = event => {
+      if (isActive(epoch, callId) && event.errorCode !== 701)
+        console.warn("Crosswave ICE error code:", event.errorCode);
+    };
     const showConnection = () => {
       if (!isActive(epoch, callId)) return;
       if (pc.connectionState === "connected" || pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
         s.connected = true;
+        clearTimeout(s.connectionTimer);
+        s.connectionTimer = null;
         announce("Connected! You're talking to a stranger.");
       } else if (pc.connectionState === "failed" || pc.iceConnectionState === "failed") {
-        announce("Could not establish a video connection. Try Next, or use another network. A TURN relay may be required.");
+        clearTimeout(s.connectionTimer);
+        s.connectionTimer = null;
+        announce(s.turnAvailable
+          ? "Couldn't secure video, despite having a TURN relay. Try Next or another network."
+          : "Couldn't secure video: no TURN relay configured. Try another network for now.");
       } else if (pc.connectionState === "disconnected") {
         announce("Connection interrupted. Attempting to reconnect…");
       }
@@ -256,7 +273,9 @@
     s.callId = match.callId;
     s.peerId = match.peerId;
     syncControls();
-    announce(s.mode === "video" ? "Match found! Securing video connection…" : "Connected! Say hello.");
+    announce(s.mode === "video"
+      ? (s.turnAvailable ? "Match found! Securing video (TURN relay available)…" : "Match found! Trying direct video (TURN unavailable)…")
+      : "Connected! Say hello.");
     if (s.mode === "text") {
       ui.messages.replaceChildren();
       appendMessage("Connected to a stranger. Be respectful and stay safe.", "system");
@@ -325,6 +344,7 @@
         try {
           const ice = await request("ice");
           if (Array.isArray(ice.iceServers) && ice.iceServers.length) s.iceServers = ice.iceServers;
+          s.turnAvailable = ice.turnAvailable === true;
         } catch { /* use fallback public STUN servers */ }
       }
       if (s.epoch !== epoch) return;

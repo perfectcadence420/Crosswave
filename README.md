@@ -43,3 +43,17 @@ Session cookie is HttpOnly, SameSite=Strict. Only call participants can fetch/se
 - Add scheduled deletion of expired sessions and old signaling payloads (signals currently persist). Do not market this as privacy-safe until retention/abuse protections are in place.
 - Anonymous bans are easily evaded by clearing cookies.
 - This is a limited two-person prototype; verify on real devices before wider release.
+
+## Fixing failed video connections — TURN relay
+If matchmaking succeeds but video cannot connect, the peer-to-peer ICE handshake may be blocked by NAT/firewalls. The original version used only STUN. TURN relays allow two clients to communicate through a server when they cannot reach one another directly.
+
+**Recommended: Cloudflare Realtime TURN.** In the Cloudflare Dashboard → Realtime → TURN, create a TURN key, then add the following encrypted **production** environment variables to the Crosswave Vercel project:
+
+- `CLOUDFLARE_TURN_KEY_ID` — the TURN key ID.
+- `CLOUDFLARE_TURN_API_TOKEN` — the TURN key API token.
+
+Redeploy Crosswave after adding the variables (environment changes do not change already-built deployments). The authenticated `GET /api/ice` route then generates two-hour TURN credentials server-side and returns the ICE servers to the browser. It should respond with `turnAvailable: true` once configured. Never put the long-lived token into client.js, GitHub, a screenshot or browser HTML.
+
+The original generic provider environment variables `TURN_URLS`, `TURN_USERNAME`, and `TURN_CREDENTIAL` also remain supported for an alternative TURN provider. Cloudflare TURN docs: https://developers.cloudflare.com/realtime/turn/generate-credentials/
+
+For the first test, use two different devices or a normal and incognito browser window on the same exact domain, with cameras allowed. Confirm the status shows "TURN relay available" after matching. If there are still failures, inspect browser chrome://webrtc-internals while the call is active to see the ICE candidate pair and connection state. Avoid sharing the full diagnostics dump because it can reveal network identifiers.
