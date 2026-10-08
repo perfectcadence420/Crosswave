@@ -641,7 +641,8 @@
   ui.messageForm.addEventListener("submit", event => void sendText(event));
   ui.sound.addEventListener("click", () => ui.remote.play().then(() => ui.sound.classList.add("hidden")).catch(() => announce("Enable sound in your browser to hear your match.")));
   window.addEventListener("pagehide", () => {
-    if (s.running) navigator.sendBeacon?.("/api/leave", new Blob(["{}"], { type: "text/plain" }));
+    if (s.running && !s.realtime) navigator.sendBeacon?.("/api/leave", new Blob(["{}"], { type: "text/plain" }));
+    closeRealtime();
     stopPolling();
     clearPeer();
     releaseMedia();
