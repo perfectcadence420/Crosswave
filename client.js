@@ -23,7 +23,8 @@
     cursor: "0", queuedIce: [], iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
     pollTimer: null, signalTimer: null, statusBusy: false, signalBusy: false,
     lastError: 0, connected: false, connectionFailed: false, reportCallId: null,
-    turnAvailable: false, connectionTimer: null, statsTimer: null, statsBusy: false
+    turnAvailable: false, connectionTimer: null, statsTimer: null, statsBusy: false,
+    realtime: false, socket: null, pendingSignals: []
   };
   const STEP_MS = 1400;
   const SIGNAL_MS = 700;
@@ -167,6 +168,7 @@
     s.connected = false;
     s.connectionFailed = false;
     s.queuedIce = [];
+    s.pendingSignals = [];
     s.cursor = "0";
     s.callId = null;
     s.peerId = null;
@@ -228,6 +230,11 @@
 
   async function sendSignal(callId, epoch, kind, payload) {
     if (!isActive(epoch, callId)) return;
+    if (s.realtime) {
+      if (s.socket?.readyState !== WebSocket.OPEN) throw new Error("Socket closed");
+      s.socket.send(JSON.stringify({type:"signal",callId,kind,payload}));
+      return;
+    }
     return request("signal", "POST", { callId, kind, payload });
   }
   async function startPeer(callId, epoch, initiator) {
@@ -383,13 +390,22 @@
       return;
     }
     showRemote("Connecting securely…");
-    try { await startPeer(match.callId, epoch, match.initiator); }
-    catch (error) { if (isActive(epoch, match.callId)) announce("Video setup failed: " + error.message); }
+    try {
+      await startPeer(match.callId, epoch, match.initiator);
+      if (isActive(epoch, match.callId)) {
+        const pending=s.pendingSignals.splice(0);
+        for(const msg of pending) await handleSignal(msg,epoch,match.callId);
+      }
+    } catch (error) { if (isActive(epoch, match.callId)) announce("Video setup failed: " + error.message); }
   }
   async function joinQueue(epoch) {
     if (!s.running || s.epoch !== epoch) return;
     announce("Looking for a stranger…");
     showRemote("Looking for a stranger…");
+    if (s.realtime) {
+      s.socket.send(JSON.stringify({type:"join",mode:s.mode}));
+      return;
+    }
     const result = await request("match", "POST", { mode: s.mode });
     if (!s.running || s.epoch !== epoch) return;
     if (result.state === "matched") await setMatch(result, epoch);
@@ -432,6 +448,49 @@
     s.pollTimer = null;
     s.signalTimer = null;
   }
+  function closeRealtime() {
+    const socket = s.socket;
+    s.socket = null; s.realtime = false;
+    if (socket) {
+      socket.onopen = null; socket.onmessage = null; socket.onerror = null; socket.onclose = null;
+      try { socket.close(1000,"Leaving"); } catch {}
+    }
+  }
+  async function connectRealtime(url,ticket,epoch) {
+    if (typeof WebSocket === "undefined") throw new Error("WebSocket unsupported");
+    const socket = new WebSocket(url,["crosswave.v1","auth."+ticket]);
+    s.socket = socket; s.realtime = true;
+    try { await new Promise((resolve,reject)=>{
+      const timeout=setTimeout(()=>reject(new Error("Realtime timeout")),8000);
+      socket.onopen=()=>{clearTimeout(timeout);resolve()};
+      socket.onerror=()=>{clearTimeout(timeout);reject(new Error("Socket failure"))};
+      socket.onclose=()=>{clearTimeout(timeout);reject(new Error("Socket closed"))};
+    }); } catch(error) { if(s.socket===socket)closeRealtime(); throw error; }
+    if (!s.running || s.epoch!==epoch || s.socket!==socket) {if(s.socket===socket)closeRealtime();return;}
+    socket.onerror=()=>{if(s.socket===socket)announce("Realtime network trouble…");};
+    socket.onclose=()=>{
+      if(s.socket!==socket||!s.running)return;
+      closeRealtime(); s.epoch++; s.running=false;stopPolling();
+      clearPeer();releaseMedia();syncControls();
+      announce("Realtime disconnected. Click Start to reconnect.");
+    };
+    socket.onmessage=event=>{
+      if(s.socket!==socket||!s.running)return;
+      let message; try{message=JSON.parse(event.data)}catch{return}
+      if(!message||typeof message!=="object")return;
+      if(message.type==="waiting"){if(!s.callId){announce("Looking for a stranger…");syncControls()}}
+      else if(message.type==="matched" && typeof message.callId==="string"){
+        void setMatch({callId:message.callId,initiator:message.initiator===true},s.epoch);
+      } else if(message.type==="signal" && message.callId===s.callId) {
+        if(s.mode==="video"&&!s.pc){s.pendingSignals.push(message);return}
+        void handleSignal(message,s.epoch,s.callId).catch(()=>{});
+      } else if(message.type==="peer-left") {
+        clearPeer();announce("Stranger left. Looking for someone new…");
+      } else if(message.type==="error") announce("Realtime: "+String(message.message||"Temporary issue"));
+    };
+    await joinQueue(epoch);
+  }
+
   async function start() {
     if (s.running || s.busy || s.stopPending || !ui.adult.checked || !ui.rules.checked) return;
     const epoch = ++s.epoch;
@@ -452,6 +511,20 @@
       s.running = true;
       s.busy = false;
       syncControls();
+      let config;
+      try {config=await request("realtime-config")}catch{}
+      if(s.epoch!==epoch || !s.running)return;
+      if(config?.enabled && config.url){
+        try{
+          const {ticket}=await request("socket-ticket","POST");
+          if(s.epoch!==epoch||!s.running)return;
+          await connectRealtime(config.url,ticket,epoch);
+          return;
+        }catch{
+          if(s.epoch!==epoch || !s.running)return;
+          closeRealtime();announce("Realtime unavailable; using original matching…");
+        }
+      }
       startPolling();
       await joinQueue(epoch);
     } catch (error) {
@@ -475,10 +548,13 @@
     s.running = false;
     s.busy = false;
     stopPolling();
+    const usingSocket = s.realtime;
+    closeRealtime();
     clearPeer();
     releaseMedia();
     syncControls();
     announce("Disconnected. Click Start whenever you're ready.");
+    if (usingSocket) { s.stopPending = false; syncControls(); return; }
     if (wasRunning) {
       try { await request("leave", "POST"); }
       catch { /* heartbeat expires stale sessions */ }
@@ -487,6 +563,13 @@
   }
   async function skip() {
     if (!s.running || s.busy) return;
+    if (s.realtime) {
+      ++s.epoch;
+      clearPeer();
+      announce("Finding your next stranger…");
+      s.socket?.send(JSON.stringify({ type: "next", mode: s.mode }));
+      return;
+    }
     const epoch = ++s.epoch;
     s.busy = true;
     clearPeer();
@@ -561,7 +644,8 @@
   ui.messageForm.addEventListener("submit", event => void sendText(event));
   ui.sound.addEventListener("click", () => ui.remote.play().then(() => ui.sound.classList.add("hidden")).catch(() => announce("Enable sound in your browser to hear your match.")));
   window.addEventListener("pagehide", () => {
-    if (s.running) navigator.sendBeacon?.("/api/leave", new Blob(["{}"], { type: "text/plain" }));
+    if (s.running && !s.realtime) navigator.sendBeacon?.("/api/leave", new Blob(["{}"], { type: "text/plain" }));
+    closeRealtime();
     stopPolling();
     clearPeer();
     releaseMedia();
