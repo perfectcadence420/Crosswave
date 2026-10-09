@@ -104,3 +104,21 @@ body.in-session .chat-page{
   .chat-page.text-mode.keyboard-open .session-footer{display:none}
   .chat-page.text-mode.keyboard-open .chat-composer{padding-bottom:9px}
 }
+
+/* Crawlable homepage explanation: SEO copy that's also useful to visitors. */
+.discover-section{position:relative;z-index:1;margin:10px 0 42px;padding:45px 0 0;border-top:1px solid #293549}
+.discover-intro{max-width:750px}.discover-intro h2,.discover-answers h2{font:800 clamp(29px,3.4vw,47px)/1.12 Outfit,system-ui,sans-serif;letter-spacing:-.04em;margin:15px 0 16px}
+.discover-intro h2 em{font-style:normal;color:#c2ffb1}
+.discover-intro>p{color:#aebccf;font-size:14px;line-height:1.85;max-width:735px;margin:0 0 26px}
+.discover-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.discover-card{background:#141e2b;border:1px solid #303d51;border-radius:17px;padding:23px;min-width:0}
+.discover-number{display:block;color:#bfffad;font-size:10px;font-weight:800;letter-spacing:.12em;margin-bottom:17px}
+.discover-card h3{font:700 20px/1.2 Outfit,system-ui,sans-serif;letter-spacing:-.025em;margin:0 0 10px;color:#eff5f7}
+.discover-card p{font-size:13px;line-height:1.75;color:#9eafc3;margin:0}
+.discover-answers{margin-top:34px;padding:24px 0 4px;border-top:1px solid #283648}
+.discover-answers h2{font-size:clamp(22px,2.3vw,31px);margin:0 0 20px}
+.discover-qa{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:25px}
+.discover-qa h3{font:700 16px Outfit,system-ui,sans-serif;margin:0 0 9px;color:#f0f5f8}
+.discover-qa p{font-size:13px;line-height:1.75;color:#9eafc3;margin:0}
+@media(max-width:900px){.discover-grid{grid-template-columns:1fr}.discover-card{padding:19px 20px}.discover-number{margin-bottom:10px}.discover-card p{max-width:650px}}
+@media(max-width:760px){.discover-section{margin:3px 0 30px;padding-top:30px}.discover-intro h2{font-size:clamp(30px,7vw,40px)}.discover-intro>p{font-size:13px;line-height:1.75}.discover-grid{gap:10px}.discover-answers{margin-top:27px}.discover-qa{grid-template-columns:1fr;gap:20px}}
