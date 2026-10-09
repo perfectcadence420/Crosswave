@@ -1,5 +1,9 @@
 # Straylo — random video and text chat
 
+## Search engine optimization (October 2026)
+
+The public homepage targets relevant searches such as "Omegle alternative", "random video chat", "video chat with strangers", "text chat with strangers", and "talk to strangers online" through a natural page title, description, and **visible**, useful introduction and Q&A. Straylo is clearly labeled independent of Omegle. There is no meta keywords tag because Google ignores it. WebSite JSON-LD suggests the preferred site name Straylo; the existing Open Graph sharing image and canonical homepage stay intact. The homepage is included in sitemap.xml. Google Search Console verification and sitemap submission still require access to the relevant Google Search Console property; these changes do not guarantee indexing or rankings.
+
 ## Straylo private admin dashboard (October 2026)
 
 Open `https://straylo.com/admin` to sign in with the owner password. The admin interface is independent of guest chat routes and cannot fetch metrics before a secure 12-hour signed, HTTP-only cookie is issued. Admin passwords and the HMAC session key live **only in Vercel production environment variables** `STRAYLO_ADMIN_PASSWORD` and `STRAYLO_ADMIN_SESSION_SECRET`, each with strong random values. Do not commit or expose those values in client bundles. Logout destroys the client cookie. Change the password by rotating the Vercel env values and redeploying; rotate the session secret to invalidate previously issued cookies.

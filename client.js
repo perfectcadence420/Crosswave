@@ -232,7 +232,7 @@
     if (s.running || s.busy) await stop();
     setChatPageVisible(false);
     if (pushHistory) window.history.pushState({mode:null},"","/" + window.location.search);
-    document.title = "Straylo — Meet the unexpected";
+    document.title = "Straylo — Random Video Chat & Omegle Alternative";
   }
   async function restoreRoute() {
     const mode = /^\/chat\/(video|text)\/?$/.exec(window.location.pathname)?.[1];
